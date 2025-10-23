@@ -1,19 +1,18 @@
-# app.py
 import streamlit as st
 from hashlib import sha256
 
-st.set_page_config(page_title="Role-based Login Demo", layout="centered")
+st.set_page_config(page_title="Role-based Login System", layout="centered")
 
 # -----------------------
-# Helper functions
+# Helper Functions
 # -----------------------
 def hash_password(password: str) -> str:
+    """Return a SHA-256 hashed password."""
     return sha256(password.encode("utf-8")).hexdigest()
 
 def init_session():
+    """Initialize session state variables."""
     if "users" not in st.session_state:
-        # simple in-memory user store: username -> dict(password_hash, role, fullname, email)
-        # Prepopulate a default admin for quick login
         st.session_state.users = {
             "admin": {
                 "password": hash_password("admin123"),
@@ -22,14 +21,10 @@ def init_session():
                 "email": "admin@example.com",
             }
         }
-    if "logged_in" not in st.session_state:
-        st.session_state.logged_in = False
-    if "current_user" not in st.session_state:
-        st.session_state.current_user = None
-    if "current_role" not in st.session_state:
-        st.session_state.current_role = None
-    if "message" not in st.session_state:
-        st.session_state.message = ""
+    st.session_state.setdefault("logged_in", False)
+    st.session_state.setdefault("current_user", None)
+    st.session_state.setdefault("current_role", None)
+    st.session_state.setdefault("message", "")
 
 def register_user(username, password, role, fullname="", email=""):
     username = username.strip().lower()
@@ -56,6 +51,16 @@ def authenticate(username, password, role):
         return False, "Incorrect password."
     return True, "Login successful."
 
+def logout():
+    st.session_state.logged_in = False
+    st.session_state.current_user = None
+    st.session_state.current_role = None
+    st.success("Logged out successfully.")
+    st.rerun()
+
+# -----------------------
+# Login & Signup
+# -----------------------
 def login_flow(role):
     st.subheader(f"{role} — Login")
     with st.form("login_form", clear_on_submit=False):
@@ -64,13 +69,12 @@ def login_flow(role):
         submitted = st.form_submit_button("Login")
     if submitted:
         ok, msg = authenticate(username, password, role)
-        st.session_state.message = msg
         if ok:
             st.session_state.logged_in = True
             st.session_state.current_user = username.strip().lower()
             st.session_state.current_role = role
             st.success(msg)
-            st.experimental_rerun()
+            st.rerun()
         else:
             st.error(msg)
 
@@ -82,7 +86,7 @@ def signup_flow(role):
         username = st.text_input("Choose a username")
         password = st.text_input("Choose a password", type="password")
         password2 = st.text_input("Confirm password", type="password")
-        submitted = st.form_submit_button("Create account")
+        submitted = st.form_submit_button("Create Account")
     if submitted:
         if password != password2:
             st.error("Passwords do not match.")
@@ -90,46 +94,35 @@ def signup_flow(role):
         ok, msg = register_user(username, password, role, fullname, email)
         if ok:
             st.success(msg)
-            st.info("You can now login using the Login form.")
         else:
             st.error(msg)
 
-def logout():
-    st.session_state.logged_in = False
-    st.session_state.current_user = None
-    st.session_state.current_role = None
-    st.success("Logged out.")
-    st.experimental_rerun()
-
 # -----------------------
-# Dashboard pages
+# Dashboards
 # -----------------------
 def admin_dashboard():
-    st.title("Admin Dashboard")
-    st.markdown("Welcome, **Admin**. Use controls below to manage users.")
-    st.write("Logged in as:", st.session_state.current_user)
+    st.title("👑 Admin Dashboard")
+    st.write(f"Welcome, **{st.session_state.current_user}**!")
     st.divider()
 
-    st.subheader("Registered users")
-    users_list = [
+    st.subheader("Registered Users")
+    users_data = [
         {"username": u, "role": data["role"], "fullname": data.get("fullname", ""), "email": data.get("email", "")}
         for u, data in st.session_state.users.items()
     ]
-    st.table(users_list)
+    st.table(users_data)
 
-    st.subheader("Create a new admin (quick)")
-    c1, c2 = st.columns([2, 1])
-    with c1:
-        new_admin_user = st.text_input("New admin username", key="new_admin_user")
-    with c2:
-        new_admin_pass = st.text_input("New admin password", type="password", key="new_admin_pass")
-    if st.button("Create admin account"):
-        if new_admin_user.strip() == "" or new_admin_pass.strip() == "":
-            st.error("Provide both username and password.")
+    st.divider()
+    st.subheader("Create a New Admin Account")
+    new_admin_user = st.text_input("New Admin Username", key="new_admin_user")
+    new_admin_pass = st.text_input("New Admin Password", type="password", key="new_admin_pass")
+    if st.button("Create Admin"):
+        if not new_admin_user or not new_admin_pass:
+            st.error("Please fill in both fields.")
         else:
             ok, msg = register_user(new_admin_user, new_admin_pass, "Admin")
             if ok:
-                st.success("Admin account created.")
+                st.success("Admin created successfully!")
             else:
                 st.error(msg)
 
@@ -138,71 +131,56 @@ def admin_dashboard():
         logout()
 
 def candidate_dashboard():
-    st.title("Candidate Dashboard")
-    st.write("Welcome,", st.session_state.current_user)
-    st.markdown(
-        """
-        **Candidate features (placeholder)**
-        - View applied jobs
-        - Edit profile & resume
-        - Take assessments
-        """
-    )
+    st.title("🎓 Candidate Dashboard")
+    st.write(f"Welcome, **{st.session_state.current_user}**!")
+    st.markdown("""
+    **Features:**
+    - View applied jobs  
+    - Edit profile & resume  
+    - Take mock interviews  
+    """)
     if st.button("Logout"):
         logout()
 
 def hiring_dashboard():
-    st.title("Hiring Company Dashboard")
-    st.write("Welcome,", st.session_state.current_user)
-    st.markdown(
-        """
-        **Hiring Company features (placeholder)**
-        - Post jobs
-        - View applicants
-        - Shortlist & schedule interviews
-        """
-    )
+    st.title("🏢 Hiring Company Dashboard")
+    st.write(f"Welcome, **{st.session_state.current_user}**!")
+    st.markdown("""
+    **Features:**
+    - Post new job openings  
+    - View applicants  
+    - Schedule interviews  
+    """)
     if st.button("Logout"):
         logout()
 
 # -----------------------
-# Main app
+# Main App
 # -----------------------
 def main():
     init_session()
-    st.header("Multi-role Login / Signup Demo")
+    st.header("🔐 Multi-Role Login System")
 
-    st.info("Select a role from the dropdown, then Sign Up or Login for that role.")
-    role = st.selectbox("Choose role", ["Admin", "Candidate", "Hiring Company"])
+    role = st.selectbox("Select your role", ["Admin", "Candidate", "Hiring Company"])
 
-    # If already logged in and role matches, show dashboard
     if st.session_state.logged_in:
-        # If logged in but role doesn't match selected role, show info
         if role != st.session_state.current_role:
-            st.warning(f"You are logged in as '{st.session_state.current_role}'. Switch the dropdown to that role or logout and login again.")
+            st.warning(f"You are logged in as '{st.session_state.current_role}'. Change dropdown to your role or logout.")
             if st.button("Go to my dashboard"):
-                # show their actual dashboard regardless of dropdown
-                if st.session_state.current_role == "Admin":
-                    admin_dashboard()
-                elif st.session_state.current_role == "Candidate":
-                    candidate_dashboard()
-                elif st.session_state.current_role == "Hiring Company":
-                    hiring_dashboard()
-                return
+                role = st.session_state.current_role
             if st.button("Logout current account"):
                 logout()
-                return
+            return
 
-        # Show dashboard of current role
-        if st.session_state.current_role == "Admin":
+        # Role-based dashboard
+        if role == "Admin":
             admin_dashboard()
-        elif st.session_state.current_role == "Candidate":
+        elif role == "Candidate":
             candidate_dashboard()
-        elif st.session_state.current_role == "Hiring Company":
+        elif role == "Hiring Company":
             hiring_dashboard()
         return
 
-    # Not logged in: show login/signup tabs
     tab1, tab2 = st.tabs(["Login", "Sign Up"])
     with tab1:
         login_flow(role)
@@ -210,12 +188,8 @@ def main():
         signup_flow(role)
 
     st.markdown("---")
-    st.write("Tip: Default admin credentials are:")
-    st.code("username: admin\npassword: admin123")
-
-    # debug / show current session (optional)
-    if st.checkbox("Show session state (debug)"):
-        st.write(st.session_state)
+    st.write("💡 Default Admin Login:")
+    st.code("Username: admin\nPassword: admin123")
 
 if __name__ == "__main__":
     main()
