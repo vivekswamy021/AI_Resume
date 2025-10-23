@@ -1,195 +1,174 @@
 import streamlit as st
-from hashlib import sha256
 
-st.set_page_config(page_title="Role-based Login System", layout="centered")
+# -------------------------------
+# Page Config
+# -------------------------------
+st.set_page_config(page_title="PragyanAI Project", page_icon="🤖", layout="wide")
 
-# -----------------------
-# Helper Functions
-# -----------------------
-def hash_password(password: str) -> str:
-    """Return a SHA-256 hashed password."""
-    return sha256(password.encode("utf-8")).hexdigest()
+# -------------------------------
+# Sidebar Navigation
+# -------------------------------
+st.sidebar.title("🔍 PragyanAI Navigation")
+main_choice = st.sidebar.selectbox(
+    "Select Dashboard",
+    ["Home", "Admin Dashboard", "Candidate Dashboard", "Hiring Company Dashboard"]
+)
 
-def init_session():
-    """Initialize session state variables."""
-    if "users" not in st.session_state:
-        st.session_state.users = {
-            "admin": {
-                "password": hash_password("admin123"),
-                "role": "Admin",
-                "fullname": "Default Admin",
-                "email": "admin@example.com",
-            }
-        }
-    st.session_state.setdefault("logged_in", False)
-    st.session_state.setdefault("current_user", None)
-    st.session_state.setdefault("current_role", None)
-    st.session_state.setdefault("message", "")
-
-def register_user(username, password, role, fullname="", email=""):
-    username = username.strip().lower()
-    if username == "":
-        return False, "Username cannot be empty."
-    if username in st.session_state.users:
-        return False, "User already exists. Please login or choose another username."
-    st.session_state.users[username] = {
-        "password": hash_password(password),
-        "role": role,
-        "fullname": fullname,
-        "email": email,
-    }
-    return True, "Registration successful! You can now login."
-
-def authenticate(username, password, role):
-    username = username.strip().lower()
-    if username not in st.session_state.users:
-        return False, "User does not exist. Please sign up."
-    user = st.session_state.users[username]
-    if user["role"] != role:
-        return False, f"This account is registered as '{user['role']}'. Select the correct role."
-    if user["password"] != hash_password(password):
-        return False, "Incorrect password."
-    return True, "Login successful."
-
-def logout():
-    st.session_state.logged_in = False
-    st.session_state.current_user = None
-    st.session_state.current_role = None
-    st.success("Logged out successfully.")
-    st.rerun()
-
-# -----------------------
-# Login & Signup
-# -----------------------
-def login_flow(role):
-    st.subheader(f"{role} — Login")
-    with st.form("login_form", clear_on_submit=False):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Login")
-    if submitted:
-        ok, msg = authenticate(username, password, role)
-        if ok:
-            st.session_state.logged_in = True
-            st.session_state.current_user = username.strip().lower()
-            st.session_state.current_role = role
-            st.success(msg)
-            st.rerun()
-        else:
-            st.error(msg)
-
-def signup_flow(role):
-    st.subheader(f"{role} — Sign Up")
-    with st.form("signup_form", clear_on_submit=False):
-        fullname = st.text_input("Full name")
-        email = st.text_input("Email")
-        username = st.text_input("Choose a username")
-        password = st.text_input("Choose a password", type="password")
-        password2 = st.text_input("Confirm password", type="password")
-        submitted = st.form_submit_button("Create Account")
-    if submitted:
-        if password != password2:
-            st.error("Passwords do not match.")
-            return
-        ok, msg = register_user(username, password, role, fullname, email)
-        if ok:
-            st.success(msg)
-        else:
-            st.error(msg)
-
-# -----------------------
-# Dashboards
-# -----------------------
-def admin_dashboard():
-    st.title("👑 Admin Dashboard")
-    st.write(f"Welcome, **{st.session_state.current_user}**!")
-    st.divider()
-
-    st.subheader("Registered Users")
-    users_data = [
-        {"username": u, "role": data["role"], "fullname": data.get("fullname", ""), "email": data.get("email", "")}
-        for u, data in st.session_state.users.items()
-    ]
-    st.table(users_data)
-
-    st.divider()
-    st.subheader("Create a New Admin Account")
-    new_admin_user = st.text_input("New Admin Username", key="new_admin_user")
-    new_admin_pass = st.text_input("New Admin Password", type="password", key="new_admin_pass")
-    if st.button("Create Admin"):
-        if not new_admin_user or not new_admin_pass:
-            st.error("Please fill in both fields.")
-        else:
-            ok, msg = register_user(new_admin_user, new_admin_pass, "Admin")
-            if ok:
-                st.success("Admin created successfully!")
-            else:
-                st.error(msg)
-
-    st.divider()
-    if st.button("Logout"):
-        logout()
-
-def candidate_dashboard():
-    st.title("🎓 Candidate Dashboard")
-    st.write(f"Welcome, **{st.session_state.current_user}**!")
+# -------------------------------
+# Home
+# -------------------------------
+if main_choice == "Home":
+    st.title("🤖 PragyanAI Project")
+    st.subheader("Welcome to the Unified AI Recruitment Platform")
     st.markdown("""
-    **Features:**
-    - View applied jobs  
-    - Edit profile & resume  
-    - Take mock interviews  
+    ### Features
+    - 🔸 Admin, Candidate, and Hiring Company dashboards  
+    - 🔸 Resume–JD Matching  
+    - 🔸 AI-Assisted SWOT & GAP Analysis  
+    - 🔸 Mock Interview Generation  
+    - 🔸 Skill Roadmap & Certificate Suggestions  
     """)
-    if st.button("Logout"):
-        logout()
+    st.info("Select a dashboard from the sidebar to begin.")
 
-def hiring_dashboard():
+# -------------------------------
+# Admin Dashboard
+# -------------------------------
+elif main_choice == "Admin Dashboard":
+    st.title("🛠️ Admin Dashboard")
+
+    tab = st.tabs(["Login", "Add JD", "Candidate Approvals", "Vendor Approvals", "Statistics"])
+
+    with tab[0]:
+        st.subheader("Admin Login")
+        admin_user = st.text_input("Username")
+        admin_pass = st.text_input("Password", type="password")
+        if st.button("Login"):
+            st.success(f"Welcome Admin: {admin_user}")
+
+    with tab[1]:
+        st.subheader("Add Job Description (JD)")
+        jd_source = st.radio("JD Source", ["Upload PDF/DOC", "Paste Text", "LinkedIn URL"])
+        if jd_source == "Upload PDF/DOC":
+            jd_file = st.file_uploader("Upload JD File", type=["pdf", "docx"])
+        elif jd_source == "Paste Text":
+            jd_text = st.text_area("Paste JD Content")
+        else:
+            jd_url = st.text_input("LinkedIn Job URL")
+        st.button("Add JD")
+
+    with tab[2]:
+        st.subheader("Approve Candidates")
+        st.button("Approve Selected Candidates")
+
+    with tab[3]:
+        st.subheader("Approve Vendors")
+        st.button("Approve Selected Vendors")
+
+    with tab[4]:
+        st.subheader("Basic Statistics")
+        st.metric("Total JDs", 124)
+        st.metric("Candidates Approved", 82)
+        st.metric("Vendors Approved", 19)
+
+# -------------------------------
+# Candidate Dashboard
+# -------------------------------
+elif main_choice == "Candidate Dashboard":
+    st.title("👤 Candidate Dashboard")
+
+    tab = st.tabs([
+        "Login / Signup", "Upload / View CV", "Match CV with JD", 
+        "GAP & SWOT Analysis", "Mock Interviews", "Skill Roadmap"
+    ])
+
+    with tab[0]:
+        st.subheader("Login / Signup")
+        st.text_input("Email")
+        st.text_input("Password", type="password")
+        st.button("Login / Signup")
+
+    with tab[1]:
+        st.subheader("Upload or Paste CV")
+        cv_method = st.radio("CV Source", ["Upload DOCX/PDF", "Paste Text", "LinkedIn URL"])
+        if cv_method == "Upload DOCX/PDF":
+            cv_file = st.file_uploader("Upload CV", type=["pdf", "docx"])
+        elif cv_method == "Paste Text":
+            st.text_area("Paste your CV content here")
+        else:
+            st.text_input("LinkedIn Profile URL")
+        st.button("Save CV")
+
+    with tab[2]:
+        st.subheader("Match CV with JD")
+        st.selectbox("Select JD", ["JD 1", "JD 2", "JD 3"])
+        if st.button("Match Now"):
+            st.success("✅ Match Completed! Match Score: 85%")
+
+    with tab[3]:
+        st.subheader("GAP Analysis & SWOT")
+        st.write("🔹 Strengths, Weaknesses, Opportunities, and Threats shown here after matching.")
+        st.button("Run Analysis")
+
+    with tab[4]:
+        st.subheader("Mock Interview for JD")
+        st.selectbox("Select JD for Interview", ["JD 1", "JD 2", "JD 3"])
+        st.button("Start Interview")
+
+    with tab[5]:
+        st.subheader("Skill Roadmap & Certifications")
+        st.write("💡 Suggested Learning Path based on JD gap analysis.")
+        st.button("Generate Skill Plan")
+
+# -------------------------------
+# Hiring Company Dashboard
+# -------------------------------
+elif main_choice == "Hiring Company Dashboard":
     st.title("🏢 Hiring Company Dashboard")
-    st.write(f"Welcome, **{st.session_state.current_user}**!")
-    st.markdown("""
-    **Features:**
-    - Post new job openings  
-    - View applicants  
-    - Schedule interviews  
-    """)
-    if st.button("Logout"):
-        logout()
 
-# -----------------------
-# Main App
-# -----------------------
-def main():
-    init_session()
-    st.header("🔐 Multi-Role Login System")
+    tab = st.tabs([
+        "Login / Signup", "Create JD", "Upload CVs", 
+        "Match & Rank Candidates", "Screening & Scheduling", "Tracking"
+    ])
 
-    role = st.selectbox("Select your role", ["Admin", "Candidate", "Hiring Company"])
+    with tab[0]:
+        st.subheader("Company Login / Signup")
+        st.text_input("Company Email")
+        st.text_input("Password", type="password")
+        st.button("Login / Signup")
 
-    if st.session_state.logged_in:
-        if role != st.session_state.current_role:
-            st.warning(f"You are logged in as '{st.session_state.current_role}'. Change dropdown to your role or logout.")
-            if st.button("Go to my dashboard"):
-                role = st.session_state.current_role
-            if st.button("Logout current account"):
-                logout()
-            return
+    with tab[1]:
+        st.subheader("Create JD")
+        jd_method = st.radio("Method", ["Upload Document", "Paste Text", "From LinkedIn"])
+        if jd_method == "Upload Document":
+            st.file_uploader("Upload JD", type=["pdf", "docx"])
+        elif jd_method == "Paste Text":
+            st.text_area("Paste JD Content")
+        else:
+            st.text_input("LinkedIn Job URL")
+        st.button("Save JD")
 
-        # Role-based dashboard
-        if role == "Admin":
-            admin_dashboard()
-        elif role == "Candidate":
-            candidate_dashboard()
-        elif role == "Hiring Company":
-            hiring_dashboard()
-        return
+    with tab[2]:
+        st.subheader("Upload Candidate CVs")
+        st.file_uploader("Upload Individual CV or ZIP", type=["pdf", "docx", "zip"])
+        st.button("Upload CVs")
 
-    tab1, tab2 = st.tabs(["Login", "Sign Up"])
-    with tab1:
-        login_flow(role)
-    with tab2:
-        signup_flow(role)
+    with tab[3]:
+        st.subheader("Match & Rank Candidates")
+        st.selectbox("Select JD", ["JD 1", "JD 2", "JD 3"])
+        st.button("Run Matching & Ranking")
 
-    st.markdown("---")
-    st.write("💡 Default Admin Login:")
-    st.code("Username: admin\nPassword: admin123")
+    with tab[4]:
+        st.subheader("Screening & Scheduling")
+        st.write("Screen shortlisted candidates and schedule interviews.")
+        st.button("Schedule Interview")
 
-if __name__ == "__main__":
-    main()
+    with tab[5]:
+        st.subheader("Candidate Tracking")
+        st.write("Track progress: Applied → Shortlisted → Selected → Rejected.")
+        st.button("Show Tracking Table")
+
+# -------------------------------
+# Footer
+# -------------------------------
+st.markdown("---")
+st.caption("© 2025 PragyanAI Project | AI Recruitment Platform")
