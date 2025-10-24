@@ -86,6 +86,7 @@ def extract_content(file_type, file_path):
             return text
         
         elif file_type == 'txt':
+            # Handle plain text, .json, or other unrecognized formats as text
             with open(file_path, 'r', encoding='utf-8') as f:
                 return f.read()
         
@@ -327,9 +328,9 @@ def parse_and_store_resume(uploaded_file, file_name_key='default'):
     if not parsed or "error" in parsed:
         return {"error": parsed.get('error', 'Unknown parsing error'), "full_text": text}
 
-    # Generate Excel data for download if needed (only for single resume upload in admin)
+    # Generate Excel data for download if needed (only for single resume upload in Candidate dashboard)
     excel_data = None
-    if file_name_key == 'single_resume_admin':
+    if file_name_key == 'single_resume_candidate':
         try:
             name = parsed.get('name', 'candidate').replace(' ', '_').strip()
             name = "".join(c for c in name if c.isalnum() or c in ('_', '-')).rstrip()
@@ -471,6 +472,8 @@ def admin_dashboard():
         st.session_state.jd_list = []
     if "resumes_to_analyze" not in st.session_state:
         st.session_state.resumes_to_analyze = []
+    if "admin_match_results" not in st.session_state:
+        st.session_state.admin_match_results = []
     
     tab_jd, tab_analysis = st.tabs(["📄 Job Description Management", "📊 Resume Analysis"])
 
@@ -500,7 +503,9 @@ def admin_dashboard():
                         with st.spinner(f"Attempting JD extraction for: {url}"):
                             jd_text = extract_jd_from_linkedin_url(url)
                         
-                        st.session_state.jd_list.append({"name": f"JD from URL: {url.split('/jobs/view/')[1].split('/')[0]}" if '/jobs/view/' in url else f"JD from URL {count+1}", "content": jd_text})
+                        # Use a cleaner name for display
+                        name_base = url.split('/jobs/view/')[-1].split('/')[0] if '/jobs/view/' in url else f"URL {count+1}"
+                        st.session_state.jd_list.append({"name": f"JD from URL: {name_base}", "content": jd_text})
                         if not jd_text.startswith("[Error"):
                             count += 1
                             
@@ -520,7 +525,12 @@ def admin_dashboard():
                     texts = [t.strip() for t in text_list.split("---")] if jd_type == "Multiple JD" else [text_list.strip()]
                     for i, text in enumerate(texts):
                          if text:
-                            st.session_state.jd_list.append({"name": f"JD - {text.splitlines()[0][:30]}..." if text.splitlines()[0].strip() else f"Pasted JD {len(st.session_state.jd_list) + i + 1}", "content": text})
+                            # Use the first line as a name
+                            name_base = text.splitlines()[0].strip()
+                            if len(name_base) > 30: name_base = f"{name_base[:27]}..."
+                            if not name_base: name_base = f"Pasted JD {len(st.session_state.jd_list) + i + 1}"
+                            
+                            st.session_state.jd_list.append({"name": name_base, "content": text})
                     st.success(f"✅ {len(texts)} JD(s) added successfully!")
 
         # Upload File
@@ -557,7 +567,9 @@ def admin_dashboard():
             st.markdown("### ✅ Current JDs Added:")
             for idx, jd_item in enumerate(st.session_state.jd_list, 1):
                 title = jd_item['name']
-                with st.expander(f"JD {idx}: {title}"):
+                # Clean up simulated title prefix for display
+                display_title = title.replace("--- Simulated JD for: ", "")
+                with st.expander(f"JD {idx}: {display_title}"):
                     st.text(jd_item['content'])
         else:
             st.info("No Job Descriptions added yet.")
@@ -573,7 +585,8 @@ def admin_dashboard():
 
         uploaded_files = st.file_uploader(
             "Choose files to analyze",
-            type=["pdf", "docx", "txt", "json"],
+            # Added more types for robustness
+            type=["pdf", "docx", "txt", "json", "rtf"], 
             accept_multiple_files=(resume_upload_type == "Multiple Resumes"),
             key="resume_file_uploader_admin"
         )
@@ -636,9 +649,11 @@ def admin_dashboard():
                     try:
                         fit_output = evaluate_jd_fit(selected_jd_content, parsed_json)
                         
-                        # Attempt to extract score/percentage for easy display
-                        overall_score_match = re.search(r'Overall Fit Score: (\d+)/10', fit_output)
-                        skills_match = re.search(r'Skills Match: (\d+)%', fit_output)
+                        # --- ENHANCED EXTRACTION LOGIC ---
+                        # Robust extraction of Overall Fit Score (e.g., "7/10")
+                        overall_score_match = re.search(r'Overall Fit Score:\s*(\d+)\s*/10', fit_output)
+                        # Robust extraction of Skills Match Percentage (e.g., "75%")
+                        skills_match = re.search(r'Skills Match:\s*(\d+)\s*%', fit_output)
                         
                         overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
                         skills_percent = skills_match.group(1) if skills_match else 'N/A'
@@ -681,12 +696,11 @@ def admin_dashboard():
             # Display detailed analysis in expanders
             st.markdown("##### Detailed Reports")
             for item in results_df:
-                with st.expander(f"Report for {item['resume_name']} against {item['jd_name']} (Score: {item['overall_score']}/10)"):
+                with st.expander(f"Report for **{item['resume_name']}** against {item['jd_name']} (Score: **{item['overall_score']}/10** | Skills: **{item['skills_percent']}%**)"):
                     st.markdown(item['full_analysis'])
 
 
 def candidate_dashboard():
-    # ... (No changes in this function)
     st.header("👩‍🎓 Candidate Dashboard")
     st.markdown("Welcome! Use the tabs below to upload your resume and access AI preparation tools.")
 
