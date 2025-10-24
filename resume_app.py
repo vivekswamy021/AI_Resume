@@ -666,24 +666,26 @@ def admin_dashboard():
                         
                         # --- END ENHANCED EXTRACTION LOGIC ---
 
+                        # SUCCESS BLOCK: All keys are explicitly included
                         st.session_state.admin_match_results.append({
                             "resume_name": resume_name,
                             "jd_name": selected_jd_name,
                             "overall_score": overall_score,
                             "skills_percent": skills_percent,
-                            "experience_percent": experience_percent, # New field
-                            "education_percent": education_percent,   # New field
+                            "experience_percent": experience_percent, 
+                            "education_percent": education_percent,   
                             "full_analysis": fit_output
                         })
                     except Exception as e:
+                        # ERROR BLOCK: All keys are explicitly included with "Error" value to prevent KeyError
                         st.session_state.admin_match_results.append({
                             "resume_name": resume_name,
                             "jd_name": selected_jd_name,
                             "overall_score": "Error",
                             "skills_percent": "Error",
-                            "experience_percent": "Error",
-                            "education_percent": "Error",
-                            "full_analysis": f"Error running analysis: {e}"
+                            "experience_percent": "Error", # CRITICAL FIX
+                            "education_percent": "Error",   # CRITICAL FIX
+                            "full_analysis": f"Error running analysis: {e}\n{traceback.format_exc()}"
                         })
                 st.success("Analysis complete!")
 
@@ -693,24 +695,26 @@ def admin_dashboard():
             st.markdown("#### 3. Match Results")
             results_df = st.session_state.admin_match_results
             
-            # Create a simple table/summary of results - UPDATED COLUMNS
+            # Create a simple table/summary of results
             display_data = []
             for item in results_df:
+                # Use .get() method as a safety net, although the error block above is the primary fix
                 display_data.append({
                     "Resume": item["resume_name"],
                     "JD": item["jd_name"],
                     "Fit Score (out of 10)": item["overall_score"],
-                    "Skills (%)": item["skills_percent"],
-                    "Experience (%)": item["experience_percent"], # New column
-                    "Education (%)": item["education_percent"],   # New column
+                    "Skills (%)": item.get("skills_percent", "N/A"),
+                    "Experience (%)": item.get("experience_percent", "N/A"), 
+                    "Education (%)": item.get("education_percent", "N/A"),   
                 })
 
             st.dataframe(display_data, use_container_width=True)
 
-            # Display detailed analysis in expanders - UPDATED HEADER
+            # Display detailed analysis in expanders
             st.markdown("##### Detailed Reports")
             for item in results_df:
-                header_text = f"Report for **{item['resume_name']}** against {item['jd_name']} (Score: **{item['overall_score']}/10** | S: **{item['skills_percent']}%** | E: **{item['experience_percent']}%** | Edu: **{item['education_percent']}%**)"
+                # Use .get() method here for robustness in display
+                header_text = f"Report for **{item['resume_name']}** against {item['jd_name']} (Score: **{item['overall_score']}/10** | S: **{item.get('skills_percent', 'N/A')}%** | E: **{item.get('experience_percent', 'N/A')}%** | Edu: **{item.get('education_percent', 'N/A')}%**)"
                 with st.expander(header_text):
                     st.markdown(item['full_analysis'])
 
