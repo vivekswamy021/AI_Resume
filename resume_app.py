@@ -649,20 +649,30 @@ def admin_dashboard():
                     try:
                         fit_output = evaluate_jd_fit(selected_jd_content, parsed_json)
                         
-                        # --- ENHANCED EXTRACTION LOGIC ---
+                        # --- ENHANCED EXTRACTION LOGIC (Extracting all 3 percentages) ---
+                        
                         # Robust extraction of Overall Fit Score (e.g., "7/10")
                         overall_score_match = re.search(r'Overall Fit Score:\s*(\d+)\s*/10', fit_output)
-                        # Robust extraction of Skills Match Percentage (e.g., "75%")
-                        skills_match = re.search(r'Skills Match:\s*(\d+)\s*%', fit_output)
                         
+                        # Robust extraction of the three section percentages
+                        skills_match = re.search(r'Skills Match:\s*(\d+)\s*%', fit_output)
+                        experience_match = re.search(r'Experience Match:\s*(\d+)\s*%', fit_output)
+                        education_match = re.search(r'Education Match:\s*(\d+)\s*%', fit_output)
+
                         overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
                         skills_percent = skills_match.group(1) if skills_match else 'N/A'
+                        experience_percent = experience_match.group(1) if experience_match else 'N/A'
+                        education_percent = education_match.group(1) if education_match else 'N/A'
+                        
+                        # --- END ENHANCED EXTRACTION LOGIC ---
 
                         st.session_state.admin_match_results.append({
                             "resume_name": resume_name,
                             "jd_name": selected_jd_name,
                             "overall_score": overall_score,
                             "skills_percent": skills_percent,
+                            "experience_percent": experience_percent, # New field
+                            "education_percent": education_percent,   # New field
                             "full_analysis": fit_output
                         })
                     except Exception as e:
@@ -671,6 +681,8 @@ def admin_dashboard():
                             "jd_name": selected_jd_name,
                             "overall_score": "Error",
                             "skills_percent": "Error",
+                            "experience_percent": "Error",
+                            "education_percent": "Error",
                             "full_analysis": f"Error running analysis: {e}"
                         })
                 st.success("Analysis complete!")
@@ -681,22 +693,25 @@ def admin_dashboard():
             st.markdown("#### 3. Match Results")
             results_df = st.session_state.admin_match_results
             
-            # Create a simple table/summary of results
+            # Create a simple table/summary of results - UPDATED COLUMNS
             display_data = []
             for item in results_df:
                 display_data.append({
                     "Resume": item["resume_name"],
                     "JD": item["jd_name"],
                     "Fit Score (out of 10)": item["overall_score"],
-                    "Skills Match (%)": item["skills_percent"],
+                    "Skills (%)": item["skills_percent"],
+                    "Experience (%)": item["experience_percent"], # New column
+                    "Education (%)": item["education_percent"],   # New column
                 })
 
             st.dataframe(display_data, use_container_width=True)
 
-            # Display detailed analysis in expanders
+            # Display detailed analysis in expanders - UPDATED HEADER
             st.markdown("##### Detailed Reports")
             for item in results_df:
-                with st.expander(f"Report for **{item['resume_name']}** against {item['jd_name']} (Score: **{item['overall_score']}/10** | Skills: **{item['skills_percent']}%**)"):
+                header_text = f"Report for **{item['resume_name']}** against {item['jd_name']} (Score: **{item['overall_score']}/10** | S: **{item['skills_percent']}%** | E: **{item['experience_percent']}%** | Edu: **{item['education_percent']}%**)"
+                with st.expander(header_text):
                     st.markdown(item['full_analysis'])
 
 
