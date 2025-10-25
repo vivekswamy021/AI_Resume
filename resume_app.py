@@ -457,7 +457,7 @@ def role_selection_page():
 # UI PAGES: Dashboards
 # -------------------------
 
-# The Admin dashboard remains unchanged for JD/Resume management structure
+# The Admin dashboard has been updated with the robust regex extraction fix
 def admin_dashboard():
     st.header("🧑‍💼 Admin Dashboard")
     st.sidebar.button("⬅️ Go Back to Role Selection", on_click=go_to, args=("role_selection",))
@@ -644,17 +644,38 @@ def admin_dashboard():
                     try:
                         fit_output = evaluate_jd_fit(selected_jd_content, parsed_json)
                         
-                        # --- ENHANCED EXTRACTION LOGIC (Extracting all 3 percentages) ---
-                        overall_score_match = re.search(r'Overall Fit Score:\s*(\d+)\s*/10', fit_output)
-                        skills_match = re.search(r'Skills Match:\s*(\d+)\s*%', fit_output)
-                        experience_match = re.search(r'Experience Match:\s*(\d+)\s*%', fit_output)
-                        education_match = re.search(r'Education Match:\s*(\d+)\s*%', fit_output)
+                        # --- ENHANCED EXTRACTION LOGIC (FIXED) ---
+                        # 1. Overall Score: Look for (number)/10, robust to newlines or extra spaces
+                        overall_score_match = re.search(r'Overall Fit Score:\s*(\d+)\s*/10', fit_output, re.IGNORECASE)
+                        
+                        # 2. Section Matches: Look for "Key Match: XX%" pattern within the Section Analysis text
+                        # Use a single, powerful search for the section breakdown text
+                        section_analysis_match = re.search(
+                             r'--- Section Match Analysis ---\s*(.*?)\s*Strengths/Matches:', 
+                             fit_output, re.DOTALL
+                        )
 
+                        skills_percent = 'N/A'
+                        experience_percent = 'N/A'
+                        education_percent = 'N/A'
+                        
+                        if section_analysis_match:
+                            section_text = section_analysis_match.group(1)
+                            
+                            # Extract percentages from the collected section text
+                            skills_match = re.search(r'Skills Match:\s*(\d+)%', section_text, re.IGNORECASE)
+                            experience_match = re.search(r'Experience Match:\s*(\d+)%', section_text, re.IGNORECASE)
+                            education_match = re.search(r'Education Match:\s*(\d+)%', section_text, re.IGNORECASE)
+                            
+                            if skills_match:
+                                skills_percent = skills_match.group(1)
+                            if experience_match:
+                                experience_percent = experience_match.group(1)
+                            if education_match:
+                                education_percent = education_match.group(1)
+                        
                         overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
-                        skills_percent = skills_match.group(1) if skills_match else 'N/A'
-                        experience_percent = experience_match.group(1) if experience_match else 'N/A'
-                        education_percent = education_match.group(1) if education_match else 'N/A'
-                        # --- END ENHANCED EXTRACTION LOGIC ---
+                        # --- END ENHANCED EXTRACTION LOGIC (FIXED) ---
 
                         st.session_state.admin_match_results.append({
                             "resume_name": resume_name,
@@ -973,17 +994,40 @@ def candidate_dashboard():
                     try:
                         fit_output = evaluate_jd_fit(jd_content, parsed_json)
                         
-                        # --- ENHANCED EXTRACTION LOGIC ---
-                        overall_score_match = re.search(r'Overall Fit Score:\s*(\d+)\s*/10', fit_output)
-                        skills_match = re.search(r'Skills Match:\s*(\d+)\s*%', fit_output)
-                        experience_match = re.search(r'Experience Match:\s*(\d+)\s*%', fit_output)
-                        education_match = re.search(r'Education Match:\s*(\d+)\s*%', fit_output)
+                        # --- ENHANCED EXTRACTION LOGIC (FIXED) ---
+                        # 1. Overall Score: Look for (number)/10, robust to newlines or extra spaces
+                        overall_score_match = re.search(r'Overall Fit Score:\s*(\d+)\s*/10', fit_output, re.IGNORECASE)
+                        
+                        # 2. Section Matches: Look for "Key Match: XX%" pattern within the Section Analysis text
+                        # Use a single, powerful search for the section breakdown text
+                        # re.DOTALL allows the '.' to match newlines, making it robust to LLM formatting
+                        section_analysis_match = re.search(
+                             r'--- Section Match Analysis ---\s*(.*?)\s*Strengths/Matches:', 
+                             fit_output, re.DOTALL
+                        )
 
+                        skills_percent = 'N/A'
+                        experience_percent = 'N/A'
+                        education_percent = 'N/A'
+                        
+                        if section_analysis_match:
+                            # Search only within the captured section block for better accuracy
+                            section_text = section_analysis_match.group(1)
+                            
+                            # Extract percentages from the collected section text
+                            skills_match = re.search(r'Skills Match:\s*(\d+)%', section_text, re.IGNORECASE)
+                            experience_match = re.search(r'Experience Match:\s*(\d+)%', section_text, re.IGNORECASE)
+                            education_match = re.search(r'Education Match:\s*(\d+)%', section_text, re.IGNORECASE)
+                            
+                            if skills_match:
+                                skills_percent = skills_match.group(1)
+                            if experience_match:
+                                experience_percent = experience_match.group(1)
+                            if education_match:
+                                education_percent = education_match.group(1)
+                        
                         overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
-                        skills_percent = skills_match.group(1) if skills_match else 'N/A'
-                        experience_percent = experience_match.group(1) if experience_match else 'N/A'
-                        education_percent = education_match.group(1) if education_match else 'N/A'
-                        # --- END ENHANCED EXTRACTION LOGIC ---
+                        # --- END ENHANCED EXTRACTION LOGIC (FIXED) ---
 
                         st.session_state.candidate_match_results.append({
                             "jd_name": jd_name,
