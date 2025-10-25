@@ -409,7 +409,6 @@ def login_page():
             st.error("Please enter both email and password")
 
     st.markdown("---")
-    # --- SOCIAL LOGIN REMOVED ---
     
     if st.button("Don't have an account? Sign up here"):
         go_to("signup")
@@ -458,13 +457,14 @@ def role_selection_page():
 # UI PAGES: Dashboards
 # -------------------------
 
+# The Admin dashboard remains unchanged for JD/Resume management structure
 def admin_dashboard():
     st.header("🧑‍💼 Admin Dashboard")
     st.sidebar.button("⬅️ Go Back to Role Selection", on_click=go_to, args=("role_selection",))
     
     # Initialize Admin session state variables
-    if "jd_list" not in st.session_state:
-        st.session_state.jd_list = []
+    if "admin_jd_list" not in st.session_state:
+        st.session_state.admin_jd_list = []
     if "resumes_to_analyze" not in st.session_state:
         st.session_state.resumes_to_analyze = []
     if "admin_match_results" not in st.session_state:
@@ -479,15 +479,15 @@ def admin_dashboard():
         jd_type = st.radio("Select JD Type", ["Single JD", "Multiple JD"], key="jd_type_admin")
         st.markdown("### Add JD by:")
         
-        # Options for adding JD (excluding "URL - Neural")
-        method = st.radio("Choose Method", ["Upload File", "Paste Text", "LinkedIn URL"], key="jd_add_method") 
+        # Options for adding JD 
+        method = st.radio("Choose Method", ["Upload File", "Paste Text", "LinkedIn URL"], key="jd_add_method_admin") 
 
-        # URL (Only LinkedIn URL remains from the original URL section logic)
+        # URL
         if method == "LinkedIn URL":
             url_list = st.text_area(
-                "Enter one or more URLs (comma separated)" if jd_type == "Multiple JD" else "Enter URL"
+                "Enter one or more URLs (comma separated)" if jd_type == "Multiple JD" else "Enter URL", key="url_list_admin"
             )
-            if st.button("Add JD(s) from URL"):
+            if st.button("Add JD(s) from URL", key="add_jd_url_btn_admin"):
                 if url_list:
                     urls = [u.strip() for u in url_list.split(",")] if jd_type == "Multiple JD" else [url_list.strip()]
                     
@@ -500,7 +500,7 @@ def admin_dashboard():
                         
                         # Use a cleaner name for display
                         name_base = url.split('/jobs/view/')[-1].split('/')[0] if '/jobs/view/' in url else f"URL {count+1}"
-                        st.session_state.jd_list.append({"name": f"JD from URL: {name_base}", "content": jd_text})
+                        st.session_state.admin_jd_list.append({"name": f"JD from URL: {name_base}", "content": jd_text})
                         if not jd_text.startswith("[Error"):
                             count += 1
                             
@@ -513,9 +513,9 @@ def admin_dashboard():
         # Paste Text
         elif method == "Paste Text":
             text_list = st.text_area(
-                "Paste one or more JD texts (separate by '---')" if jd_type == "Multiple JD" else "Paste JD text here"
+                "Paste one or more JD texts (separate by '---')" if jd_type == "Multiple JD" else "Paste JD text here", key="text_list_admin"
             )
-            if st.button("Add JD(s) from Text"):
+            if st.button("Add JD(s) from Text", key="add_jd_text_btn_admin"):
                 if text_list:
                     texts = [t.strip() for t in text_list.split("---")] if jd_type == "Multiple JD" else [text_list.strip()]
                     for i, text in enumerate(texts):
@@ -523,9 +523,9 @@ def admin_dashboard():
                             # Use the first line as a name
                             name_base = text.splitlines()[0].strip()
                             if len(name_base) > 30: name_base = f"{name_base[:27]}..."
-                            if not name_base: name_base = f"Pasted JD {len(st.session_state.jd_list) + i + 1}"
+                            if not name_base: name_base = f"Pasted JD {len(st.session_state.admin_jd_list) + i + 1}"
                             
-                            st.session_state.jd_list.append({"name": name_base, "content": text})
+                            st.session_state.admin_jd_list.append({"name": name_base, "content": text})
                     st.success(f"✅ {len(texts)} JD(s) added successfully!")
 
         # Upload File
@@ -534,9 +534,9 @@ def admin_dashboard():
                 "Upload JD file(s)",
                 type=["pdf", "txt", "docx"],
                 accept_multiple_files=True if jd_type == "Multiple JD" else False,
-                key="jd_file_uploader"
+                key="jd_file_uploader_admin"
             )
-            if st.button("Add JD(s) from File", key="add_jd_file_btn"):
+            if st.button("Add JD(s) from File", key="add_jd_file_btn_admin"):
                 files_to_process = uploaded_files if jd_type == "Multiple JD" and uploaded_files else [uploaded_files]
                 count = 0
                 for file in files_to_process:
@@ -550,7 +550,7 @@ def admin_dashboard():
                         jd_text = extract_content(file_type, temp_path)
                         
                         if not jd_text.startswith("Error"):
-                            st.session_state.jd_list.append({"name": file.name, "content": jd_text})
+                            st.session_state.admin_jd_list.append({"name": file.name, "content": jd_text})
                             count += 1
                 if count > 0:
                     st.success(f"✅ {count} JD(s) added successfully!")
@@ -558,9 +558,9 @@ def admin_dashboard():
                     st.error("No valid JD files were uploaded or content extraction failed.")
 
         # Display Added JDs
-        if st.session_state.jd_list:
+        if st.session_state.admin_jd_list:
             st.markdown("### ✅ Current JDs Added:")
-            for idx, jd_item in enumerate(st.session_state.jd_list, 1):
+            for idx, jd_item in enumerate(st.session_state.admin_jd_list, 1):
                 title = jd_item['name']
                 # Clean up simulated title prefix for display
                 display_title = title.replace("--- Simulated JD for: ", "")
@@ -570,11 +570,11 @@ def admin_dashboard():
             st.info("No Job Descriptions added yet.")
 
 
-    # --- TAB 2: Resume Analysis ---
+    # --- TAB 2: Resume Analysis (Admin logic) ---
     with tab_analysis:
         st.subheader("Analyze Resumes Against Job Descriptions")
 
-        # 1. Resume Upload
+        # 1. Resume Upload (Admin uses st.session_state.resumes_to_analyze list)
         st.markdown("#### 1. Upload Resumes")
         resume_upload_type = st.radio("Upload Type", ["Single Resume", "Multiple Resumes"], key="resume_upload_type_admin")
 
@@ -586,7 +586,7 @@ def admin_dashboard():
             key="resume_file_uploader_admin"
         )
         
-        if st.button("Load and Parse Resume(s)"):
+        if st.button("Load and Parse Resume(s) for Analysis", key="parse_resumes_admin"):
             if uploaded_files:
                 files_to_process = uploaded_files if isinstance(uploaded_files, list) else [uploaded_files]
                 st.session_state.resumes_to_analyze = []
@@ -619,12 +619,12 @@ def admin_dashboard():
             st.info("Upload and parse resumes first to enable analysis.")
             return
 
-        if not st.session_state.jd_list:
+        if not st.session_state.admin_jd_list:
             st.error("Please add at least one Job Description in the 'JD Management' tab before running an analysis.")
             return
 
-        jd_options = {item['name']: item['content'] for item in st.session_state.jd_list}
-        selected_jd_name = st.selectbox("Select JD for Matching", list(jd_options.keys()))
+        jd_options = {item['name']: item['content'] for item in st.session_state.admin_jd_list}
+        selected_jd_name = st.selectbox("Select JD for Matching", list(jd_options.keys()), key="select_jd_admin")
         selected_jd_content = jd_options.get(selected_jd_name, "")
 
 
@@ -645,11 +645,7 @@ def admin_dashboard():
                         fit_output = evaluate_jd_fit(selected_jd_content, parsed_json)
                         
                         # --- ENHANCED EXTRACTION LOGIC (Extracting all 3 percentages) ---
-                        
-                        # Robust extraction of Overall Fit Score (e.g., "7/10")
                         overall_score_match = re.search(r'Overall Fit Score:\s*(\d+)\s*/10', fit_output)
-                        
-                        # Robust extraction of the three section percentages
                         skills_match = re.search(r'Skills Match:\s*(\d+)\s*%', fit_output)
                         experience_match = re.search(r'Experience Match:\s*(\d+)\s*%', fit_output)
                         education_match = re.search(r'Education Match:\s*(\d+)\s*%', fit_output)
@@ -658,10 +654,8 @@ def admin_dashboard():
                         skills_percent = skills_match.group(1) if skills_match else 'N/A'
                         experience_percent = experience_match.group(1) if experience_match else 'N/A'
                         education_percent = education_match.group(1) if education_match else 'N/A'
-                        
                         # --- END ENHANCED EXTRACTION LOGIC ---
 
-                        # SUCCESS BLOCK: All keys are explicitly included
                         st.session_state.admin_match_results.append({
                             "resume_name": resume_name,
                             "jd_name": selected_jd_name,
@@ -672,7 +666,6 @@ def admin_dashboard():
                             "full_analysis": fit_output
                         })
                     except Exception as e:
-                        # ERROR BLOCK: All keys are explicitly included with "Error" value to prevent KeyError
                         st.session_state.admin_match_results.append({
                             "resume_name": resume_name,
                             "jd_name": selected_jd_name,
@@ -693,7 +686,6 @@ def admin_dashboard():
             # Create a simple table/summary of results
             display_data = []
             for item in results_df:
-                # Use .get() method as a safety net
                 display_data.append({
                     "Resume": item["resume_name"],
                     "JD": item["jd_name"],
@@ -708,12 +700,11 @@ def admin_dashboard():
             # Display detailed analysis in expanders
             st.markdown("##### Detailed Reports")
             for item in results_df:
-                # Use .get() method here for robustness in display
                 header_text = f"Report for **{item['resume_name']}** against {item['jd_name']} (Score: **{item['overall_score']}/10** | S: **{item.get('skills_percent', 'N/A')}%** | E: **{item.get('experience_percent', 'N/A')}%** | Edu: **{item.get('education_percent', 'N/A')}%**)"
                 with st.expander(header_text):
                     st.markdown(item['full_analysis'])
 
-
+# Candidate Dashboard is updated here
 def candidate_dashboard():
     st.header("👩‍🎓 Candidate Dashboard")
     st.markdown("Welcome! Use the tabs below to upload your resume and access AI preparation tools.")
@@ -748,13 +739,16 @@ def candidate_dashboard():
             st.info("Please upload a resume to begin.")
 
     # Main Content Tabs (AI Resume Parser Features)
-    tab1, tab2, tab3, tab4 = st.tabs([
+    # Tabs are re-indexed after removing "Single JD Fit Evaluation" (the original tab 4)
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📄 Resume Parsing", 
         "💬 Resume Chatbot (Q&A)", 
         "❓ Interview Prep", 
-        "👔 Job Fit Evaluation"
+        "📚 JD Management", # New Tab 4 (was Tab 5)
+        "🎯 Batch JD Match"  # New Tab 5 (was Tab 6)
     ])
-
+    
+    # --- TAB 1: Resume Parsing ---
     with tab1:
         st.header("Resume Parsing")
         if not st.session_state.full_text:
@@ -804,6 +798,7 @@ def candidate_dashboard():
 
         st.text_area("Selected Section Content", section_content_str, height=200)
 
+    # --- TAB 2: Resume Chatbot (Q&A) ---
     with tab2:
         st.header("Resume Chatbot (Q&A)")
         st.markdown("### Ask any question about the uploaded resume.")
@@ -825,6 +820,7 @@ def candidate_dashboard():
         if st.session_state.get('qa_answer'):
             st.text_area("Answer", st.session_state.qa_answer, height=150)
 
+    # --- TAB 3: Interview Prep ---
     with tab3:
         st.header("Interview Preparation Tools")
         if not st.session_state.parsed or "error" in st.session_state.parsed:
@@ -845,34 +841,194 @@ def candidate_dashboard():
 
         if st.session_state.get('iq_output'):
             st.text_area("Generated Interview Questions (by difficulty level)", st.session_state.iq_output, height=400)
-
-
+            
+    # --- TAB 4: JD Management (Modified Admin Logic) ---
     with tab4:
-        st.header("Job Fit Evaluation")
-        st.markdown("### Evaluate how well your resume fits a specific job description.")
+        st.header("📚 Manage Job Descriptions for Matching")
+        st.markdown("Add multiple JDs here to compare your resume against them in the next tab.")
         
-        if not st.session_state.parsed or "error" in st.session_state.parsed:
-            st.warning("Please upload and successfully parse a resume first.")
+        # Initialize JD list specific to candidate if not present (to avoid mixing with admin's list)
+        if "candidate_jd_list" not in st.session_state:
+             st.session_state.candidate_jd_list = []
+        
+        jd_type = st.radio("Select JD Type", ["Single JD", "Multiple JD"], key="jd_type_candidate")
+        st.markdown("### Add JD by:")
+        
+        # Options for adding JD 
+        method = st.radio("Choose Method", ["Upload File", "Paste Text", "LinkedIn URL"], key="jd_add_method_candidate") 
+
+        # URL
+        if method == "LinkedIn URL":
+            url_list = st.text_area(
+                "Enter one or more URLs (comma separated)" if jd_type == "Multiple JD" else "Enter URL", key="url_list_candidate"
+            )
+            if st.button("Add JD(s) from URL", key="add_jd_url_btn_candidate"):
+                if url_list:
+                    urls = [u.strip() for u in url_list.split(",")] if jd_type == "Multiple JD" else [url_list.strip()]
+                    
+                    count = 0
+                    for url in urls:
+                        if not url: continue
+                        
+                        with st.spinner(f"Attempting JD extraction for: {url}"):
+                            jd_text = extract_jd_from_linkedin_url(url)
+                        
+                        name_base = url.split('/jobs/view/')[-1].split('/')[0] if '/jobs/view/' in url else f"URL {count+1}"
+                        st.session_state.candidate_jd_list.append({"name": f"JD from URL: {name_base}", "content": jd_text})
+                        if not jd_text.startswith("[Error"):
+                            count += 1
+                            
+                    if count > 0:
+                        st.success(f"✅ {count} JD(s) added successfully! Check the display below for the extracted content.")
+                    else:
+                        st.error("No JDs were added successfully.")
+
+
+        # Paste Text
+        elif method == "Paste Text":
+            text_list = st.text_area(
+                "Paste one or more JD texts (separate by '---')" if jd_type == "Multiple JD" else "Paste JD text here", key="text_list_candidate"
+            )
+            if st.button("Add JD(s) from Text", key="add_jd_text_btn_candidate"):
+                if text_list:
+                    texts = [t.strip() for t in text_list.split("---")] if jd_type == "Multiple JD" else [text_list.strip()]
+                    for i, text in enumerate(texts):
+                         if text:
+                            name_base = text.splitlines()[0].strip()
+                            if len(name_base) > 30: name_base = f"{name_base[:27]}..."
+                            if not name_base: name_base = f"Pasted JD {len(st.session_state.candidate_jd_list) + i + 1}"
+                            
+                            st.session_state.candidate_jd_list.append({"name": name_base, "content": text})
+                    st.success(f"✅ {len(texts)} JD(s) added successfully!")
+
+        # Upload File
+        elif method == "Upload File":
+            uploaded_files = st.file_uploader(
+                "Upload JD file(s)",
+                type=["pdf", "txt", "docx"],
+                accept_multiple_files=True if jd_type == "Multiple JD" else False,
+                key="jd_file_uploader_candidate"
+            )
+            if st.button("Add JD(s) from File", key="add_jd_file_btn_candidate"):
+                files_to_process = uploaded_files if jd_type == "Multiple JD" and uploaded_files else [uploaded_files]
+                count = 0
+                for file in files_to_process:
+                    if file:
+                        temp_dir = tempfile.mkdtemp()
+                        temp_path = os.path.join(temp_dir, file.name)
+                        with open(temp_path, "wb") as f:
+                            f.write(file.getbuffer())
+                            
+                        file_type = get_file_type(temp_path)
+                        jd_text = extract_content(file_type, temp_path)
+                        
+                        if not jd_text.startswith("Error"):
+                            st.session_state.candidate_jd_list.append({"name": file.name, "content": jd_text})
+                            count += 1
+                if count > 0:
+                    st.success(f"✅ {count} JD(s) added successfully!")
+                else:
+                    st.error("No valid JD files were uploaded or content extraction failed.")
+
+        # Display Added JDs
+        if st.session_state.candidate_jd_list:
+            st.markdown("### ✅ Current JDs Added:")
+            for idx, jd_item in enumerate(st.session_state.candidate_jd_list, 1):
+                title = jd_item['name']
+                display_title = title.replace("--- Simulated JD for: ", "")
+                with st.expander(f"JD {idx}: {display_title}"):
+                    st.text(jd_item['content'])
+        else:
+            st.info("No Job Descriptions added yet.")
+
+    # --- TAB 5: Batch JD Match (Modified Admin Analysis Logic) ---
+    with tab5:
+        st.header("🎯 Batch JD Match")
+        st.markdown("Compare your current resume against all saved job descriptions.")
+
+        if not st.session_state.parsed:
+            st.warning("Please **upload and parse your resume** in the sidebar first.")
             return
-        
-        jd_input = st.text_area("Paste Job Description Here", height=300, placeholder="Paste the full job description...")
-        
-        if st.button("Evaluate JD Fit", key='jd_fit_btn_c'):
-            if not jd_input:
-                st.error("Please paste a job description.")
-                return
 
-            with st.spinner("Evaluating job fit..."):
-                try:
-                    fit_output = evaluate_jd_fit(jd_input, st.session_state.parsed)
-                    st.session_state.jd_fit_output = fit_output
-                except Exception as e:
-                    st.error(f"Error evaluating JD fit: {e}")
-                    st.session_state.jd_fit_output = "Error during JD fit evaluation."
+        if not st.session_state.candidate_jd_list:
+            st.error("Please **add Job Descriptions** in the 'JD Management' tab (Tab 4) before running batch analysis.")
+            return
+            
+        # Initialize results list for the candidate dashboard
+        if "candidate_match_results" not in st.session_state:
+            st.session_state.candidate_match_results = []
 
-        if st.session_state.get('jd_fit_output'):
-            st.markdown("### Job Fit Evaluation Results")
-            st.markdown(st.session_state.jd_fit_output)
+        if st.button(f"Run Batch Match Against {len(st.session_state.candidate_jd_list)} JDs"):
+            st.session_state.candidate_match_results = []
+            
+            resume_name = st.session_state.parsed.get('name', 'Uploaded Resume')
+            parsed_json = st.session_state.parsed
+
+            with st.spinner(f"Matching {resume_name}'s resume against {len(st.session_state.candidate_jd_list)} JDs..."):
+                for jd_item in st.session_state.candidate_jd_list:
+                    
+                    jd_name = jd_item['name']
+                    jd_content = jd_item['content']
+
+                    try:
+                        fit_output = evaluate_jd_fit(jd_content, parsed_json)
+                        
+                        # --- ENHANCED EXTRACTION LOGIC ---
+                        overall_score_match = re.search(r'Overall Fit Score:\s*(\d+)\s*/10', fit_output)
+                        skills_match = re.search(r'Skills Match:\s*(\d+)\s*%', fit_output)
+                        experience_match = re.search(r'Experience Match:\s*(\d+)\s*%', fit_output)
+                        education_match = re.search(r'Education Match:\s*(\d+)\s*%', fit_output)
+
+                        overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
+                        skills_percent = skills_match.group(1) if skills_match else 'N/A'
+                        experience_percent = experience_match.group(1) if experience_match else 'N/A'
+                        education_percent = education_match.group(1) if education_match else 'N/A'
+                        # --- END ENHANCED EXTRACTION LOGIC ---
+
+                        st.session_state.candidate_match_results.append({
+                            "jd_name": jd_name,
+                            "overall_score": overall_score,
+                            "skills_percent": skills_percent,
+                            "experience_percent": experience_percent, 
+                            "education_percent": education_percent,   
+                            "full_analysis": fit_output
+                        })
+                    except Exception as e:
+                        st.session_state.candidate_match_results.append({
+                            "jd_name": jd_name,
+                            "overall_score": "Error",
+                            "skills_percent": "Error",
+                            "experience_percent": "Error", 
+                            "education_percent": "Error",   
+                            "full_analysis": f"Error running analysis for {jd_name}: {e}\n{traceback.format_exc()}"
+                        })
+                st.success("Batch analysis complete!")
+
+
+        # 3. Display Results
+        if st.session_state.get('candidate_match_results'):
+            st.markdown("#### Match Results for Your Resume")
+            results_df = st.session_state.candidate_match_results
+            
+            # Create a simple table/summary of results
+            display_data = []
+            for item in results_df:
+                display_data.append({
+                    "Job Description": item["jd_name"].replace("--- Simulated JD for: ", ""),
+                    "Fit Score (out of 10)": item["overall_score"],
+                    "Skills (%)": item.get("skills_percent", "N/A"),
+                    "Experience (%)": item.get("experience_percent", "N/A"), 
+                    "Education (%)": item.get("education_percent", "N/A"),   
+                })
+
+            st.dataframe(display_data, use_container_width=True)
+
+            # Display detailed analysis in expanders
+            st.markdown("##### Detailed Reports")
+            for item in results_df:
+                header_text = f"Report for **{item['jd_name'].replace('--- Simulated JD for: ', '')}** (Score: **{item['overall_score']}/10** | S: **{item.get('skills_percent', 'N/A')}%** | E: **{item.get('experience_percent', 'N/A')}%** | Edu: **{item.get('education_percent', 'N/A')}%**)"
+                with st.expander(header_text):
+                    st.markdown(item['full_analysis'])
 
 
 def hiring_dashboard():
@@ -898,9 +1054,16 @@ def main():
         st.session_state.qa_answer = ""
         st.session_state.iq_output = ""
         st.session_state.jd_fit_output = ""
-        st.session_state.jd_list = [] # For Admin Dashboard (list of dicts: {'name', 'content'})
+        
+        # Admin Dashboard specific lists
+        st.session_state.admin_jd_list = [] # For Admin Dashboard (list of dicts: {'name', 'content'})
         st.session_state.resumes_to_analyze = [] # For Admin Dashboard (list of dicts: {'name', 'parsed', 'full_text'})
         st.session_state.admin_match_results = [] # For Admin Dashboard match results
+        
+        # Candidate Dashboard specific lists
+        st.session_state.candidate_jd_list = []
+        st.session_state.candidate_match_results = []
+
 
     # --- Page Routing ---
     if st.session_state.page == "login":
