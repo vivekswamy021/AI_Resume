@@ -178,10 +178,9 @@ def parse_with_llm(text, return_type='json'):
 def extract_jd_from_linkedin_url(url: str) -> str:
     """
     Simulates JD content extraction from a LinkedIn URL.
+    This simulation is used for robustness in a pure Streamlit environment.
     """
     try:
-        # st.info(f"Simulating JD extraction for: {url}")
-        
         job_title = "Data Scientist"
         try:
             match = re.search(r'/jobs/view/([^/]+)', url)
@@ -194,7 +193,7 @@ def extract_jd_from_linkedin_url(url: str) -> str:
              return f"[Error: Not a valid LinkedIn Job URL format: {url}]"
 
         
-        # Simulated synthesized JD content
+        # Simulated synthesized JD content (Restored for robustness in a non-backend environment)
         jd_text = f"""
         --- Simulated JD for: {job_title} ---
         
@@ -403,19 +402,15 @@ def login_page():
 
     if st.button("Login", use_container_width=True):
         if email and password:
+            # Simulate successful login and go to role selection
+            st.success("Login successful!")
             go_to("role_selection")
         else:
             st.error("Please enter both email and password")
 
     st.markdown("---")
-    st.markdown("### Or continue with")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.button("🔵 Continue with Google", use_container_width=True)
-    with col2:
-        st.button("🔗 Continue with LinkedIn", use_container_width=True)
-
-    st.markdown("---")
+    # --- SOCIAL LOGIN REMOVED ---
+    
     if st.button("Don't have an account? Sign up here"):
         go_to("signup")
 
@@ -683,8 +678,8 @@ def admin_dashboard():
                             "jd_name": selected_jd_name,
                             "overall_score": "Error",
                             "skills_percent": "Error",
-                            "experience_percent": "Error", # CRITICAL FIX
-                            "education_percent": "Error",   # CRITICAL FIX
+                            "experience_percent": "Error", 
+                            "education_percent": "Error",   
                             "full_analysis": f"Error running analysis: {e}\n{traceback.format_exc()}"
                         })
                 st.success("Analysis complete!")
@@ -698,7 +693,7 @@ def admin_dashboard():
             # Create a simple table/summary of results
             display_data = []
             for item in results_df:
-                # Use .get() method as a safety net, although the error block above is the primary fix
+                # Use .get() method as a safety net
                 display_data.append({
                     "Resume": item["resume_name"],
                     "JD": item["jd_name"],
