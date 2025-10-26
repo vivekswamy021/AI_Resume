@@ -10,6 +10,7 @@ from gtts import gTTS
 import traceback
 import re
 from dotenv import load_dotenv 
+import pandas as pd # Import pandas for data management
 
 # -------------------------
 # CONFIGURATION & API SETUP
@@ -457,7 +458,7 @@ def role_selection_page():
 # UI PAGES: Dashboards
 # -------------------------
 
-# The Admin dashboard has been updated with the robust regex extraction fix
+# The Admin dashboard has been updated with the robust regex extraction fix AND NEW APPROVAL TAB
 def admin_dashboard():
     st.header("🧑‍💼 Admin Dashboard")
     st.sidebar.button("⬅️ Go Back to Role Selection", on_click=go_to, args=("role_selection",))
@@ -470,7 +471,20 @@ def admin_dashboard():
     if "admin_match_results" not in st.session_state:
         st.session_state.admin_match_results = []
     
-    tab_jd, tab_analysis = st.tabs(["📄 Job Description Management", "📊 Resume Analysis"])
+    # Initialize Approval Data (Placeholder)
+    if 'unapproved_candidates' not in st.session_state:
+        st.session_state.unapproved_candidates = [
+            {'id': 101, 'name': 'Alice Johnson', 'email': 'alice@example.com', 'status': 'Pending'},
+            {'id': 102, 'name': 'Bob Smith', 'email': 'bob@example.com', 'status': 'Pending'},
+        ]
+    if 'unapproved_vendors' not in st.session_state:
+        st.session_state.unapproved_vendors = [
+            {'id': 201, 'name': 'Global Staffing Solutions', 'contact': 'john@gss.com', 'status': 'Pending'},
+            {'id': 202, 'name': 'Tech Recruiters Co.', 'contact': 'sara@trc.net', 'status': 'Pending'},
+        ]
+
+
+    tab_jd, tab_analysis, tab_approval = st.tabs(["📄 Job Description Management", "📊 Resume Analysis", "✅ Approval Management"])
 
     # --- TAB 1: JD Management ---
     with tab_jd:
@@ -725,7 +739,88 @@ def admin_dashboard():
                 with st.expander(header_text):
                     st.markdown(item['full_analysis'])
 
-# Candidate Dashboard is updated here
+    # --- TAB 3: Approval Management (NEW) ---
+    with tab_approval:
+        st.subheader("Approve New Candidates and Vendors")
+
+        # 1. Candidate Approval
+        st.markdown("### 1. Candidate Approval")
+        
+        # Filter out approved candidates for display
+        pending_candidates = [c for c in st.session_state.unapproved_candidates if c['status'] == 'Pending']
+        
+        if pending_candidates:
+            df_candidates = pd.DataFrame(pending_candidates)
+            df_candidates['Action'] = False # Checkbox column
+            
+            # Display editable DataFrame
+            edited_df_candidates = st.data_editor(
+                df_candidates[['name', 'email', 'status', 'Action']],
+                column_config={"Action": st.column_config.CheckboxColumn("Approve", default=False)},
+                hide_index=True,
+                key="candidate_approval_editor"
+            )
+            
+            if st.button("Submit Candidate Approvals", key="submit_candidate_approval"):
+                approved_ids = edited_df_candidates[edited_df_candidates['Action'] == True]['id'].tolist()
+                
+                if approved_ids:
+                    count = 0
+                    for candidate in st.session_state.unapproved_candidates:
+                        if candidate['id'] in approved_ids and candidate['status'] == 'Pending':
+                            candidate['status'] = 'Approved'
+                            count += 1
+                    
+                    # Remove approved candidates from the pending list for the next run
+                    st.session_state.unapproved_candidates = [c for c in st.session_state.unapproved_candidates if c['status'] == 'Pending']
+                    st.success(f"✅ {count} candidate(s) approved and moved from the pending list.")
+                    st.rerun()
+                else:
+                    st.info("No candidates were selected for approval.")
+        else:
+            st.info("No pending candidates require approval.")
+
+        st.markdown("---")
+
+        # 2. Vendor Approval
+        st.markdown("### 2. Vendor Approval")
+        
+        # Filter out approved vendors for display
+        pending_vendors = [v for v in st.session_state.unapproved_vendors if v['status'] == 'Pending']
+
+        if pending_vendors:
+            df_vendors = pd.DataFrame(pending_vendors)
+            df_vendors['Action'] = False # Checkbox column
+
+            # Display editable DataFrame
+            edited_df_vendors = st.data_editor(
+                df_vendors[['name', 'contact', 'status', 'Action']],
+                column_config={"Action": st.column_config.CheckboxColumn("Approve", default=False)},
+                hide_index=True,
+                key="vendor_approval_editor"
+            )
+
+            if st.button("Submit Vendor Approvals", key="submit_vendor_approval"):
+                approved_ids = edited_df_vendors[edited_df_vendors['Action'] == True]['id'].tolist()
+                
+                if approved_ids:
+                    count = 0
+                    for vendor in st.session_state.unapproved_vendors:
+                        if vendor['id'] in approved_ids and vendor['status'] == 'Pending':
+                            vendor['status'] = 'Approved'
+                            count += 1
+
+                    # Remove approved vendors from the pending list for the next run
+                    st.session_state.unapproved_vendors = [v for v in st.session_state.unapproved_vendors if v['status'] == 'Pending']
+                    st.success(f"✅ {count} vendor(s) approved and moved from the pending list.")
+                    st.rerun()
+                else:
+                    st.info("No vendors were selected for approval.")
+        else:
+            st.info("No pending vendors require approval.")
+
+
+# Candidate Dashboard remains the same
 def candidate_dashboard():
     st.header("👩‍🎓 Candidate Dashboard")
     st.markdown("Welcome! Use the tabs below to upload your resume and access AI preparation tools.")
