@@ -467,25 +467,69 @@ def admin_dashboard():
     st.header("🧑‍💼 Admin Dashboard")
     st.sidebar.button("⬅️ Go Back to Role Selection", on_click=go_to, args=("role_selection",))
     
-    # Initialize Admin session state variables
-    if "admin_jd_list" not in st.session_state:
-        st.session_state.admin_jd_list = []
-    if "resumes_to_analyze" not in st.session_state:
-        st.session_state.resumes_to_analyze = []
-    if "admin_match_results" not in st.session_state:
-        st.session_state.admin_match_results = []
-    if "vendors_to_analyze" not in st.session_state: # NEW VENDOR STATE
-        st.session_state.vendors_to_analyze = []
+    # Initialize Admin session state variables (safety check, should be done in main)
+    if "admin_jd_list" not in st.session_state: st.session_state.admin_jd_list = []
+    if "resumes_to_analyze" not in st.session_state: st.session_state.resumes_to_analyze = []
+    if "admin_match_results" not in st.session_state: st.session_state.admin_match_results = []
+    if "vendors_to_analyze" not in st.session_state: st.session_state.vendors_to_analyze = []
+    if "applications_count" not in st.session_state: st.session_state.applications_count = 0
+    if "social_media_posts" not in st.session_state: st.session_state.social_media_posts = 0
+
     
-    # Add new 'tab_vendor'
-    tab_jd, tab_analysis, tab_candidate, tab_vendor = st.tabs([
+    # Add new 'tab_overview' as the first tab
+    tab_overview, tab_jd, tab_analysis, tab_candidate, tab_vendor = st.tabs([
+        "🚀 Dashboard Overview", # New Tab 1
         "📄 Job Description Management", 
         "📊 Resume Analysis", 
         "✅ Candidate Approval", 
-        "🤝 Vendor Approval" # New Tab
+        "🤝 Vendor Approval"
     ])
 
-    # --- TAB 1: JD Management ---
+    # --- NEW TAB 1: Dashboard Overview (Statistics) ---
+    with tab_overview:
+        st.subheader("Platform Metrics")
+        
+        # Calculate derived statistics
+        total_candidates = len(st.session_state.resumes_to_analyze)
+        total_jds = len(st.session_state.admin_jd_list)
+        total_vendors = len(st.session_state.vendors_to_analyze)
+        
+        # Applications count = Resumes + Explicitly submitted applications (for demo)
+        # We use a separate counter for "Applications" to allow it to be different from Candidates
+        total_applications = st.session_state.applications_count + total_candidates
+        
+        total_social_posts = st.session_state.social_media_posts
+
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        with col1:
+            st.metric(label="Total Candidates", value=total_candidates)
+        with col2:
+            st.metric(label="Total JDs", value=total_jds)
+        with col3:
+            st.metric(label="Total Vendors", value=total_vendors)
+        with col4:
+            st.metric(label="No. of Applications", value=total_applications)
+        with col5:
+            st.metric(label="No. of Social Media Posts", value=total_social_posts)
+            
+        st.markdown("---")
+        st.subheader("Update Counter Simulation")
+        
+        # Simple input form to simulate updates to the counters
+        with st.form("counter_update_form"):
+            app_change = st.number_input("Change Applications Counter By", min_value=-total_applications, value=0, step=1, key="app_change")
+            post_change = st.number_input("Change Social Media Posts Counter By", value=0, step=1, key="post_change")
+            
+            if st.form_submit_button("Update Counters"):
+                # Update the simple counters
+                st.session_state.applications_count = max(0, st.session_state.applications_count + app_change)
+                st.session_state.social_media_posts = max(0, st.session_state.social_media_posts + post_change)
+                st.success("Counters updated! Refreshing Dashboard...")
+                st.rerun()
+                
+
+    # --- TAB 2: JD Management ---
     with tab_jd:
         st.subheader("Add and Manage Job Descriptions (JD)")
         
@@ -583,7 +627,7 @@ def admin_dashboard():
             st.info("No Job Descriptions added yet.")
 
 
-    # --- TAB 2: Resume Analysis (Admin logic) ---
+    # --- TAB 3: Resume Analysis (Admin logic) ---
     with tab_analysis:
         st.subheader("Analyze Resumes Against Job Descriptions")
 
@@ -602,8 +646,7 @@ def admin_dashboard():
         if st.button("Load and Parse Resume(s) for Analysis", key="parse_resumes_admin"):
             if uploaded_files:
                 files_to_process = uploaded_files if isinstance(uploaded_files, list) else [uploaded_files]
-                # Note: We append to the existing list, not reset it, to maintain approval statuses.
-                # st.session_state.resumes_to_analyze = [] # REMOVED: prevents clearing existing data/statuses
+                
                 count = 0
                 with st.spinner("Parsing resume(s)... This may take a moment."):
                     # Collect existing names to prevent accidental duplicates without ID checks
@@ -617,6 +660,8 @@ def admin_dashboard():
                             if "error" not in result and result['name'] not in existing_names:
                                 st.session_state.resumes_to_analyze.append(result)
                                 count += 1
+                                # Increment the general application counter for new resumes
+                                st.session_state.applications_count += 1 
                             elif result['name'] in existing_names:
                                 st.warning(f"Resume for **{result['name']}** already loaded. Skipping upload.")
                             else:
@@ -748,7 +793,7 @@ def admin_dashboard():
                 with st.expander(header_text):
                     st.markdown(item['full_analysis'])
 
-    # --- TAB 3: Candidate Approval ---
+    # --- TAB 4: Candidate Approval ---
     with tab_candidate:
         st.subheader("Review and Approve Candidate Resumes")
         
@@ -789,7 +834,7 @@ def admin_dashboard():
 
             st.markdown("---") # Separator for each resume
 
-    # --- NEW TAB 4: Vendor Approval ---
+    # --- TAB 5: Vendor Approval ---
     with tab_vendor:
         st.subheader("Manage and Approve Service Vendors")
         
@@ -812,6 +857,7 @@ def admin_dashboard():
                             "status": "Pending"
                         })
                         st.success(f"Vendor '{vendor_name}' added successfully with status: Pending.")
+                        st.rerun() # Rerun to update the Dashboard Overview immediately
                     else:
                         st.warning(f"Vendor '{vendor_name}' already exists.")
                 else:
@@ -1235,9 +1281,13 @@ def main():
         
         # Admin Dashboard specific lists
         st.session_state.admin_jd_list = [] 
-        st.session_state.resumes_to_analyze = [] # list of dicts: {'name', 'parsed', 'full_text', 'status'}
+        st.session_state.resumes_to_analyze = [] 
         st.session_state.admin_match_results = [] 
-        st.session_state.vendors_to_analyze = [] # NEW: list of dicts: {'id', 'name', 'domain', 'status'}
+        st.session_state.vendors_to_analyze = [] 
+        
+        # NEW COUNTERS FOR DASHBOARD OVERVIEW
+        st.session_state.applications_count = 0 
+        st.session_state.social_media_posts = 0 
         
         # Candidate Dashboard specific lists
         st.session_state.candidate_jd_list = []
