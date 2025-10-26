@@ -476,6 +476,7 @@ def admin_dashboard():
         st.session_state.unapproved_candidates = [
             {'id': 101, 'name': 'Alice Johnson', 'email': 'alice@example.com', 'status': 'Pending'},
             {'id': 102, 'name': 'Bob Smith', 'email': 'bob@example.com', 'status': 'Pending'},
+            {'id': 103, 'name': 'Charlie Brown', 'email': 'charlie@example.com', 'status': 'Pending'},
         ]
     if 'unapproved_vendors' not in st.session_state:
         st.session_state.unapproved_vendors = [
@@ -739,7 +740,7 @@ def admin_dashboard():
                 with st.expander(header_text):
                     st.markdown(item['full_analysis'])
 
-    # --- TAB 3: Approval Management (NEW) ---
+    # --- TAB 3: Approval Management (FIXED) ---
     with tab_approval:
         st.subheader("Approve New Candidates and Vendors")
 
@@ -753,16 +754,24 @@ def admin_dashboard():
             df_candidates = pd.DataFrame(pending_candidates)
             df_candidates['Action'] = False # Checkbox column
             
-            # Display editable DataFrame
+            # CRITICAL FIX: Include 'id' in the columns passed to the editor
+            # and use column_config to hide it while ensuring it's returned.
             edited_df_candidates = st.data_editor(
-                df_candidates[['name', 'email', 'status', 'Action']],
-                column_config={"Action": st.column_config.CheckboxColumn("Approve", default=False)},
+                df_candidates, # Pass the entire DataFrame
+                column_config={
+                    "Action": st.column_config.CheckboxColumn("Approve", default=False),
+                    "id": st.column_config.Column(disabled=True, width="tiny"), # Hide/disable 'id'
+                    "status": st.column_config.Column(disabled=True)
+                },
                 hide_index=True,
-                key="candidate_approval_editor"
+                key="candidate_approval_editor",
+                # Explicitly order visible columns, keeping 'id' in the DF
+                column_order=['name', 'email', 'status', 'Action'] 
             )
             
             if st.button("Submit Candidate Approvals", key="submit_candidate_approval"):
-                approved_ids = edited_df_candidates[edited_df_candidates['Action'] == True]['id'].tolist()
+                # 'id' column is now correctly available in edited_df_candidates
+                approved_ids = edited_df_candidates[edited_df_candidates['Action'] == True]['id'].tolist() 
                 
                 if approved_ids:
                     count = 0
@@ -782,7 +791,7 @@ def admin_dashboard():
 
         st.markdown("---")
 
-        # 2. Vendor Approval
+        # 2. Vendor Approval (Fixed)
         st.markdown("### 2. Vendor Approval")
         
         # Filter out approved vendors for display
@@ -792,15 +801,21 @@ def admin_dashboard():
             df_vendors = pd.DataFrame(pending_vendors)
             df_vendors['Action'] = False # Checkbox column
 
-            # Display editable DataFrame
+            # CRITICAL FIX: Apply the same fix for Vendor Approval
             edited_df_vendors = st.data_editor(
-                df_vendors[['name', 'contact', 'status', 'Action']],
-                column_config={"Action": st.column_config.CheckboxColumn("Approve", default=False)},
+                df_vendors, # Pass the entire DataFrame
+                column_config={
+                    "Action": st.column_config.CheckboxColumn("Approve", default=False),
+                    "id": st.column_config.Column(disabled=True, width="tiny"), # Hide/disable 'id'
+                    "status": st.column_config.Column(disabled=True)
+                },
                 hide_index=True,
-                key="vendor_approval_editor"
+                key="vendor_approval_editor",
+                column_order=['name', 'contact', 'status', 'Action'] 
             )
 
             if st.button("Submit Vendor Approvals", key="submit_vendor_approval"):
+                # 'id' column is now correctly available in edited_df_vendors
                 approved_ids = edited_df_vendors[edited_df_vendors['Action'] == True]['id'].tolist()
                 
                 if approved_ids:
@@ -1203,6 +1218,18 @@ def main():
         st.session_state.candidate_jd_list = []
         st.session_state.candidate_match_results = []
 
+    # Initialize Approval Data (Placeholder, needed here for persistence across pages/reloads)
+    if 'unapproved_candidates' not in st.session_state:
+        st.session_state.unapproved_candidates = [
+            {'id': 101, 'name': 'Alice Johnson', 'email': 'alice@example.com', 'status': 'Pending'},
+            {'id': 102, 'name': 'Bob Smith', 'email': 'bob@example.com', 'status': 'Pending'},
+            {'id': 103, 'name': 'Charlie Brown', 'email': 'charlie@example.com', 'status': 'Pending'},
+        ]
+    if 'unapproved_vendors' not in st.session_state:
+        st.session_state.unapproved_vendors = [
+            {'id': 201, 'name': 'Global Staffing Solutions', 'contact': 'john@gss.com', 'status': 'Pending'},
+            {'id': 202, 'name': 'Tech Recruiters Co.', 'contact': 'sara@trc.net', 'status': 'Pending'},
+        ]
 
     # --- Page Routing ---
     if st.session_state.page == "login":
