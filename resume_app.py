@@ -10,7 +10,6 @@ from gtts import gTTS
 import traceback
 import re
 from dotenv import load_dotenv 
-import pandas as pd # Import pandas for data management
 
 # -------------------------
 # CONFIGURATION & API SETUP
@@ -344,7 +343,8 @@ def parse_and_store_resume(uploaded_file, file_name_key='default'):
         "parsed": parsed,
         "full_text": text,
         "excel_data": excel_data,
-        "name": parsed.get('name', uploaded_file.name.split('.')[0])
+        "name": parsed.get('name', uploaded_file.name.split('.')[0]),
+        "file_name": uploaded_file.name # Store original file name
     }
 
 
@@ -458,7 +458,7 @@ def role_selection_page():
 # UI PAGES: Dashboards
 # -------------------------
 
-# The Admin dashboard has been updated with the robust regex extraction fix AND NEW APPROVAL TAB
+# The Admin dashboard has been updated with the robust regex extraction fix AND the new Approval tab
 def admin_dashboard():
     st.header("🧑‍💼 Admin Dashboard")
     st.sidebar.button("⬅️ Go Back to Role Selection", on_click=go_to, args=("role_selection",))
@@ -471,23 +471,14 @@ def admin_dashboard():
     if "admin_match_results" not in st.session_state:
         st.session_state.admin_match_results = []
     
-    # Initialize Approval Data (Placeholder)
-    if 'unapproved_candidates' not in st.session_state:
-        st.session_state.unapproved_candidates = [
-            {'id': 101, 'name': 'Alice Johnson', 'email': 'alice@example.com', 'status': 'Pending'},
-            {'id': 102, 'name': 'Bob Smith', 'email': 'bob@example.com', 'status': 'Pending'},
-            {'id': 103, 'name': 'Charlie Brown', 'email': 'charlie@example.com', 'status': 'Pending'},
-        ]
-    if 'unapproved_vendors' not in st.session_state:
-        st.session_state.unapproved_vendors = [
-            {'id': 201, 'name': 'Global Staffing Solutions', 'contact': 'john@gss.com', 'status': 'Pending'},
-            {'id': 202, 'name': 'Tech Recruiters Co.', 'contact': 'sara@trc.net', 'status': 'Pending'},
-        ]
+    # New state for candidate approval management
+    if "candidate_approval_list" not in st.session_state:
+        st.session_state.candidate_approval_list = []
+        
+    # --- New Tab for Candidate Approval added here ---
+    tab_jd, tab_analysis, tab_approval = st.tabs(["📄 Job Description Management", "📊 Resume Analysis", "✅ Candidate Approval"])
 
-
-    tab_jd, tab_analysis, tab_approval = st.tabs(["📄 Job Description Management", "📊 Resume Analysis", "✅ Approval Management"])
-
-    # --- TAB 1: JD Management ---
+    # --- TAB 1: JD Management (Remains the same) ---
     with tab_jd:
         st.subheader("Add and Manage Job Descriptions (JD)")
         
@@ -591,47 +582,62 @@ def admin_dashboard():
 
         # 1. Resume Upload (Admin uses st.session_state.resumes_to_analyze list)
         st.markdown("#### 1. Upload Resumes")
+        
+        # Only allow uploads to the approval list, which can then be moved to analysis list upon approval
         resume_upload_type = st.radio("Upload Type", ["Single Resume", "Multiple Resumes"], key="resume_upload_type_admin")
 
         uploaded_files = st.file_uploader(
-            "Choose files to analyze",
+            "Choose files to analyze (These will be sent to the **Approval** tab first)",
             # Added more types for robustness
             type=["pdf", "docx", "txt", "json", "rtf"], 
             accept_multiple_files=(resume_upload_type == "Multiple Resumes"),
             key="resume_file_uploader_admin"
         )
         
-        if st.button("Load and Parse Resume(s) for Analysis", key="parse_resumes_admin"):
+        if st.button("Load and Parse Resume(s) for Approval", key="parse_resumes_admin"):
             if uploaded_files:
                 files_to_process = uploaded_files if isinstance(uploaded_files, list) else [uploaded_files]
-                st.session_state.resumes_to_analyze = []
+                
                 count = 0
                 with st.spinner("Parsing resume(s)... This may take a moment."):
                     for file in files_to_process:
                         if file:
-                            # Use parse_and_store_resume logic, but store results in a list
                             result = parse_and_store_resume(file, file_name_key='admin_analysis')
                             
                             if "error" not in result:
-                                st.session_state.resumes_to_analyze.append(result)
-                                count += 1
+                                # ADD STATUS: PENDING
+                                result['status'] = 'Pending' 
+                                
+                                # Check for duplicates before adding
+                                is_duplicate = any(r['file_name'] == result['file_name'] for r in st.session_state.candidate_approval_list)
+                                
+                                if not is_duplicate:
+                                    st.session_state.candidate_approval_list.append(result)
+                                    count += 1
+                                else:
+                                    st.warning(f"Resume {result['file_name']} is already in the approval list. Skipping.")
                             else:
                                 st.error(f"Failed to parse {file.name}: {result['error']}")
 
                 if count > 0:
-                    st.success(f"Successfully loaded and parsed {count} resume(s) for analysis.")
-                elif not st.session_state.resumes_to_analyze:
-                    st.warning("No resumes were successfully loaded and parsed.")
+                    st.success(f"Successfully loaded and parsed {count} resume(s). Please review them in the **Candidate Approval** tab.")
+                elif not st.session_state.candidate_approval_list:
+                    st.warning("No new resumes were successfully loaded and parsed.")
             else:
                 st.warning("Please upload one or more resume files.")
-
+        
         st.markdown("---")
+        
+        # --- RESUME ANALYSIS LOGIC (Uses APPROVED resumes only) ---
+        st.markdown("#### 2. Select JD and Run Match Analysis on Approved Resumes")
 
-        # 2. JD Selection and Analysis
-        st.markdown("#### 2. Select JD and Run Analysis")
-
+        # Filter resumes to analyze: only include Approved ones
+        st.session_state.resumes_to_analyze = [
+            r for r in st.session_state.candidate_approval_list if r['status'] == 'Approved'
+        ]
+        
         if not st.session_state.resumes_to_analyze:
-            st.info("Upload and parse resumes first to enable analysis.")
+            st.info("No **Approved** resumes available for analysis. Approve candidates in the 'Candidate Approval' tab first.")
             return
 
         if not st.session_state.admin_jd_list:
@@ -650,7 +656,7 @@ def admin_dashboard():
                 st.error("Selected JD content is empty.")
                 return
 
-            with st.spinner(f"Matching {len(st.session_state.resumes_to_analyze)} resumes against '{selected_jd_name}'..."):
+            with st.spinner(f"Matching {len(st.session_state.resumes_to_analyze)} approved resumes against '{selected_jd_name}'..."):
                 for resume_data in st.session_state.resumes_to_analyze:
                     
                     resume_name = resume_data['name']
@@ -659,12 +665,11 @@ def admin_dashboard():
                     try:
                         fit_output = evaluate_jd_fit(selected_jd_content, parsed_json)
                         
-                        # --- ENHANCED EXTRACTION LOGIC (FIXED) ---
+                        # --- ENHANCED EXTRACTION LOGIC ---
                         # 1. Overall Score: Look for (number)/10, robust to newlines or extra spaces
                         overall_score_match = re.search(r'Overall Fit Score:\s*(\d+)\s*/10', fit_output, re.IGNORECASE)
                         
                         # 2. Section Matches: Look for "Key Match: XX%" pattern within the Section Analysis text
-                        # Use a single, powerful search for the section breakdown text
                         section_analysis_match = re.search(
                              r'--- Section Match Analysis ---\s*(.*?)\s*Strengths/Matches:', 
                              fit_output, re.DOTALL
@@ -677,7 +682,6 @@ def admin_dashboard():
                         if section_analysis_match:
                             section_text = section_analysis_match.group(1)
                             
-                            # Extract percentages from the collected section text
                             skills_match = re.search(r'Skills Match:\s*(\d+)%', section_text, re.IGNORECASE)
                             experience_match = re.search(r'Experience Match:\s*(\d+)%', section_text, re.IGNORECASE)
                             education_match = re.search(r'Education Match:\s*(\d+)%', section_text, re.IGNORECASE)
@@ -690,7 +694,7 @@ def admin_dashboard():
                                 education_percent = education_match.group(1)
                         
                         overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
-                        # --- END ENHANCED EXTRACTION LOGIC (FIXED) ---
+                        # --- END ENHANCED EXTRACTION LOGIC ---
 
                         st.session_state.admin_match_results.append({
                             "resume_name": resume_name,
@@ -740,102 +744,72 @@ def admin_dashboard():
                 with st.expander(header_text):
                     st.markdown(item['full_analysis'])
 
-    # --- TAB 3: Approval Management (FIXED) ---
-    with tab_approval:
-        st.subheader("Approve New Candidates and Vendors")
 
-        # 1. Candidate Approval
-        st.markdown("### 1. Candidate Approval")
+    # --- TAB 3: Candidate Approval (NEW) ---
+    with tab_approval:
+        st.header("✅ Candidate Resume Approval")
+        st.markdown("Review uploaded resumes before they are moved to the Resume Analysis pool.")
+
+        if not st.session_state.candidate_approval_list:
+            st.info("No resumes are currently waiting for approval.")
+            return
+
+        # Status Update Logic
+        def update_status(index, new_status):
+            """Updates the status of a specific resume."""
+            if 0 <= index < len(st.session_state.candidate_approval_list):
+                st.session_state.candidate_approval_list[index]['status'] = new_status
+                # Re-run to update the view
+                st.experimental_rerun()
+
+        st.markdown("### Resumes Awaiting Review")
         
-        # Filter out approved candidates for display
-        pending_candidates = [c for c in st.session_state.unapproved_candidates if c['status'] == 'Pending']
-        
-        if pending_candidates:
-            df_candidates = pd.DataFrame(pending_candidates)
-            df_candidates['Action'] = False # Checkbox column
-            
-            # CRITICAL FIX: Include 'id' in the columns passed to the editor
-            # and use column_config to hide it while ensuring it's returned.
-            edited_df_candidates = st.data_editor(
-                df_candidates, # Pass the entire DataFrame
-                column_config={
-                    "Action": st.column_config.CheckboxColumn("Approve", default=False),
-                    "id": st.column_config.Column(disabled=True, width="tiny"), # Hide/disable 'id'
-                    "status": st.column_config.Column(disabled=True)
-                },
-                hide_index=True,
-                key="candidate_approval_editor",
-                # Explicitly order visible columns, keeping 'id' in the DF
-                column_order=['name', 'email', 'status', 'Action'] 
-            )
-            
-            if st.button("Submit Candidate Approvals", key="submit_candidate_approval"):
-                # 'id' column is now correctly available in edited_df_candidates
-                approved_ids = edited_df_candidates[edited_df_candidates['Action'] == True]['id'].tolist() 
-                
-                if approved_ids:
-                    count = 0
-                    for candidate in st.session_state.unapproved_candidates:
-                        if candidate['id'] in approved_ids and candidate['status'] == 'Pending':
-                            candidate['status'] = 'Approved'
-                            count += 1
-                    
-                    # Remove approved candidates from the pending list for the next run
-                    st.session_state.unapproved_candidates = [c for c in st.session_state.unapproved_candidates if c['status'] == 'Pending']
-                    st.success(f"✅ {count} candidate(s) approved and moved from the pending list.")
-                    st.rerun()
-                else:
-                    st.info("No candidates were selected for approval.")
-        else:
-            st.info("No pending candidates require approval.")
+        # Display table for pending/approved/rejected resumes
+        approval_display = []
+        for i, resume in enumerate(st.session_state.candidate_approval_list):
+            approval_display.append({
+                "Index": i,
+                "Candidate Name": resume.get('name', resume.get('file_name', 'N/A')),
+                "File Name": resume.get('file_name', 'N/A'),
+                "Current Status": resume.get('status', 'Pending'),
+            })
+
+        st.dataframe(approval_display, use_container_width=True, hide_index=True)
 
         st.markdown("---")
-
-        # 2. Vendor Approval (Fixed)
-        st.markdown("### 2. Vendor Approval")
+        st.subheader("Action Center")
         
-        # Filter out approved vendors for display
-        pending_vendors = [v for v in st.session_state.unapproved_vendors if v['status'] == 'Pending']
-
-        if pending_vendors:
-            df_vendors = pd.DataFrame(pending_vendors)
-            df_vendors['Action'] = False # Checkbox column
-
-            # CRITICAL FIX: Apply the same fix for Vendor Approval
-            edited_df_vendors = st.data_editor(
-                df_vendors, # Pass the entire DataFrame
-                column_config={
-                    "Action": st.column_config.CheckboxColumn("Approve", default=False),
-                    "id": st.column_config.Column(disabled=True, width="tiny"), # Hide/disable 'id'
-                    "status": st.column_config.Column(disabled=True)
-                },
-                hide_index=True,
-                key="vendor_approval_editor",
-                column_order=['name', 'contact', 'status', 'Action'] 
-            )
-
-            if st.button("Submit Vendor Approvals", key="submit_vendor_approval"):
-                # 'id' column is now correctly available in edited_df_vendors
-                approved_ids = edited_df_vendors[edited_df_vendors['Action'] == True]['id'].tolist()
-                
-                if approved_ids:
-                    count = 0
-                    for vendor in st.session_state.unapproved_vendors:
-                        if vendor['id'] in approved_ids and vendor['status'] == 'Pending':
-                            vendor['status'] = 'Approved'
-                            count += 1
-
-                    # Remove approved vendors from the pending list for the next run
-                    st.session_state.unapproved_vendors = [v for v in st.session_state.unapproved_vendors if v['status'] == 'Pending']
-                    st.success(f"✅ {count} vendor(s) approved and moved from the pending list.")
-                    st.rerun()
-                else:
-                    st.info("No vendors were selected for approval.")
-        else:
-            st.info("No pending vendors require approval.")
+        # Allow selection by index for detailed review and action
+        indices = [i for i in range(len(st.session_state.candidate_approval_list))]
+        selected_index = st.selectbox("Select Resume Index for Action/Review", indices, format_func=lambda i: f"Index {i}: {st.session_state.candidate_approval_list[i].get('name', 'N/A')}", key="approval_select_index")
+        
+        if selected_index is not None:
+            selected_resume = st.session_state.candidate_approval_list[selected_index]
+            
+            st.markdown(f"#### Reviewing: **{selected_resume.get('name', 'N/A')}** (Status: {selected_resume.get('status')})")
+            
+            # Detailed View (Parsed Content)
+            with st.expander("View Parsed Resume Data"):
+                st.json(selected_resume['parsed'])
+            
+            # Action Buttons
+            col_a, col_b, col_c = st.columns(3)
+            
+            with col_a:
+                if st.button("🟢 Approve Resume", key="approve_btn", use_container_width=True):
+                    update_status(selected_index, 'Approved')
+            
+            with col_b:
+                if st.button("🔴 Reject Resume", key="reject_btn", use_container_width=True):
+                    update_status(selected_index, 'Rejected')
+            
+            with col_c:
+                if st.button("🟡 Mark Pending", key="pending_btn", use_container_width=True):
+                    update_status(selected_index, 'Pending')
+            
+            st.markdown(f"**Note:** Only **Approved** resumes appear in the Analysis tab.")
 
 
-# Candidate Dashboard remains the same
 def candidate_dashboard():
     st.header("👩‍🎓 Candidate Dashboard")
     st.markdown("Welcome! Use the tabs below to upload your resume and access AI preparation tools.")
@@ -1104,13 +1078,11 @@ def candidate_dashboard():
                     try:
                         fit_output = evaluate_jd_fit(jd_content, parsed_json)
                         
-                        # --- ENHANCED EXTRACTION LOGIC (FIXED) ---
+                        # --- ENHANCED EXTRACTION LOGIC ---
                         # 1. Overall Score: Look for (number)/10, robust to newlines or extra spaces
                         overall_score_match = re.search(r'Overall Fit Score:\s*(\d+)\s*/10', fit_output, re.IGNORECASE)
                         
                         # 2. Section Matches: Look for "Key Match: XX%" pattern within the Section Analysis text
-                        # Use a single, powerful search for the section breakdown text
-                        # re.DOTALL allows the '.' to match newlines, making it robust to LLM formatting
                         section_analysis_match = re.search(
                              r'--- Section Match Analysis ---\s*(.*?)\s*Strengths/Matches:', 
                              fit_output, re.DOTALL
@@ -1137,7 +1109,7 @@ def candidate_dashboard():
                                 education_percent = education_match.group(1)
                         
                         overall_score = overall_score_match.group(1) if overall_score_match else 'N/A'
-                        # --- END ENHANCED EXTRACTION LOGIC (FIXED) ---
+                        # --- END ENHANCED EXTRACTION LOGIC ---
 
                         st.session_state.candidate_match_results.append({
                             "jd_name": jd_name,
@@ -1217,19 +1189,10 @@ def main():
         # Candidate Dashboard specific lists
         st.session_state.candidate_jd_list = []
         st.session_state.candidate_match_results = []
+        
+        # NEW: Candidate Approval List for Admin
+        st.session_state.candidate_approval_list = []
 
-    # Initialize Approval Data (Placeholder, needed here for persistence across pages/reloads)
-    if 'unapproved_candidates' not in st.session_state:
-        st.session_state.unapproved_candidates = [
-            {'id': 101, 'name': 'Alice Johnson', 'email': 'alice@example.com', 'status': 'Pending'},
-            {'id': 102, 'name': 'Bob Smith', 'email': 'bob@example.com', 'status': 'Pending'},
-            {'id': 103, 'name': 'Charlie Brown', 'email': 'charlie@example.com', 'status': 'Pending'},
-        ]
-    if 'unapproved_vendors' not in st.session_state:
-        st.session_state.unapproved_vendors = [
-            {'id': 201, 'name': 'Global Staffing Solutions', 'contact': 'john@gss.com', 'status': 'Pending'},
-            {'id': 202, 'name': 'Tech Recruiters Co.', 'contact': 'sara@trc.net', 'status': 'Pending'},
-        ]
 
     # --- Page Routing ---
     if st.session_state.page == "login":
