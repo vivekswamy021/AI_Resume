@@ -476,60 +476,16 @@ def admin_dashboard():
     if "social_media_posts" not in st.session_state: st.session_state.social_media_posts = 0
 
     
-    # Add new 'tab_overview' as the first tab
-    tab_overview, tab_jd, tab_analysis, tab_candidate, tab_vendor = st.tabs([
-        "🚀 Dashboard Overview", # New Tab 1
+    # --- CHANGE: Moved Dashboard Overview to the last position ---
+    tab_jd, tab_analysis, tab_candidate, tab_vendor, tab_overview = st.tabs([
         "📄 Job Description Management", 
         "📊 Resume Analysis", 
         "✅ Candidate Approval", 
-        "🤝 Vendor Approval"
+        "🤝 Vendor Approval", 
+        "🚀 Dashboard Overview" # Moved to end
     ])
 
-    # --- NEW TAB 1: Dashboard Overview (Statistics) ---
-    with tab_overview:
-        st.subheader("Platform Metrics")
-        
-        # Calculate derived statistics
-        total_candidates = len(st.session_state.resumes_to_analyze)
-        total_jds = len(st.session_state.admin_jd_list)
-        total_vendors = len(st.session_state.vendors_to_analyze)
-        
-        # Applications count = Resumes + Explicitly submitted applications (for demo)
-        # We use a separate counter for "Applications" to allow it to be different from Candidates
-        total_applications = st.session_state.applications_count + total_candidates
-        
-        total_social_posts = st.session_state.social_media_posts
-
-        col1, col2, col3, col4, col5 = st.columns(5)
-        
-        with col1:
-            st.metric(label="Total Candidates", value=total_candidates)
-        with col2:
-            st.metric(label="Total JDs", value=total_jds)
-        with col3:
-            st.metric(label="Total Vendors", value=total_vendors)
-        with col4:
-            st.metric(label="No. of Applications", value=total_applications)
-        with col5:
-            st.metric(label="No. of Social Media Posts", value=total_social_posts)
-            
-        st.markdown("---")
-        st.subheader("Update Counter Simulation")
-        
-        # Simple input form to simulate updates to the counters
-        with st.form("counter_update_form"):
-            app_change = st.number_input("Change Applications Counter By", min_value=-total_applications, value=0, step=1, key="app_change")
-            post_change = st.number_input("Change Social Media Posts Counter By", value=0, step=1, key="post_change")
-            
-            if st.form_submit_button("Update Counters"):
-                # Update the simple counters
-                st.session_state.applications_count = max(0, st.session_state.applications_count + app_change)
-                st.session_state.social_media_posts = max(0, st.session_state.social_media_posts + post_change)
-                st.success("Counters updated! Refreshing Dashboard...")
-                st.rerun()
-                
-
-    # --- TAB 2: JD Management ---
+    # --- TAB 1: JD Management (Now First) ---
     with tab_jd:
         st.subheader("Add and Manage Job Descriptions (JD)")
         
@@ -627,7 +583,7 @@ def admin_dashboard():
             st.info("No Job Descriptions added yet.")
 
 
-    # --- TAB 3: Resume Analysis (Admin logic) ---
+    # --- TAB 2: Resume Analysis (Admin logic) ---
     with tab_analysis:
         st.subheader("Analyze Resumes Against Job Descriptions")
 
@@ -684,7 +640,7 @@ def admin_dashboard():
             return
 
         if not st.session_state.admin_jd_list:
-            st.error("Please add at least one Job Description in the 'JD Management' tab before running an analysis.")
+            st.error("Please add at least one Job Description in the 'Job Description Management' tab before running an analysis.")
             return
 
         jd_options = {item['name']: item['content'] for item in st.session_state.admin_jd_list}
@@ -793,7 +749,7 @@ def admin_dashboard():
                 with st.expander(header_text):
                     st.markdown(item['full_analysis'])
 
-    # --- TAB 4: Candidate Approval ---
+    # --- TAB 3: Candidate Approval ---
     with tab_candidate:
         st.subheader("Review and Approve Candidate Resumes")
         
@@ -834,7 +790,7 @@ def admin_dashboard():
 
             st.markdown("---") # Separator for each resume
 
-    # --- TAB 5: Vendor Approval ---
+    # --- TAB 4: Vendor Approval ---
     with tab_vendor:
         st.subheader("Manage and Approve Service Vendors")
         
@@ -904,6 +860,49 @@ def admin_dashboard():
 
             st.markdown("---") # Separator for each vendor
 
+    # --- TAB 5: Dashboard Overview (Statistics) (Now Last) ---
+    with tab_overview:
+        st.subheader("Platform Metrics")
+        
+        # Calculate derived statistics
+        total_candidates = len(st.session_state.resumes_to_analyze)
+        total_jds = len(st.session_state.admin_jd_list)
+        total_vendors = len(st.session_state.vendors_to_analyze)
+        
+        # Applications count = Resumes + Explicitly submitted applications (for demo)
+        # We use a separate counter for "Applications" to allow it to be different from Candidates
+        total_applications = st.session_state.applications_count + total_candidates
+        
+        total_social_posts = st.session_state.social_media_posts
+
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        with col1:
+            st.metric(label="Total Candidates", value=total_candidates)
+        with col2:
+            st.metric(label="Total JDs", value=total_jds)
+        with col3:
+            st.metric(label="Total Vendors", value=total_vendors)
+        with col4:
+            st.metric(label="No. of Applications", value=total_applications)
+        with col5:
+            st.metric(label="No. of Social Media Posts", value=total_social_posts)
+            
+        st.markdown("---")
+        st.subheader("Update Counter Simulation")
+        
+        # Simple input form to simulate updates to the counters
+        with st.form("counter_update_form"):
+            app_change = st.number_input("Change Applications Counter By", min_value=-total_applications, value=0, step=1, key="app_change")
+            post_change = st.number_input("Change Social Media Posts Counter By", value=0, step=1, key="post_change")
+            
+            if st.form_submit_button("Update Counters"):
+                # Update the simple counters
+                st.session_state.applications_count = max(0, st.session_state.applications_count + app_change)
+                st.session_state.social_media_posts = max(0, st.session_state.social_media_posts + post_change)
+                st.success("Counters updated! Refreshing Dashboard...")
+                st.rerun()
+                
 
 # Candidate Dashboard is updated here
 def candidate_dashboard():
