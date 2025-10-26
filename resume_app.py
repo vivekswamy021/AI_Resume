@@ -474,8 +474,16 @@ def admin_dashboard():
         st.session_state.resumes_to_analyze = []
     if "admin_match_results" not in st.session_state:
         st.session_state.admin_match_results = []
+    if "vendors_to_analyze" not in st.session_state: # NEW VENDOR STATE
+        st.session_state.vendors_to_analyze = []
     
-    tab_jd, tab_analysis, tab_approval = st.tabs(["📄 Job Description Management", "📊 Resume Analysis", "✅ Candidate Approval"])
+    # Add new 'tab_vendor'
+    tab_jd, tab_analysis, tab_candidate, tab_vendor = st.tabs([
+        "📄 Job Description Management", 
+        "📊 Resume Analysis", 
+        "✅ Candidate Approval", 
+        "🤝 Vendor Approval" # New Tab
+    ])
 
     # --- TAB 1: JD Management ---
     with tab_jd:
@@ -594,22 +602,28 @@ def admin_dashboard():
         if st.button("Load and Parse Resume(s) for Analysis", key="parse_resumes_admin"):
             if uploaded_files:
                 files_to_process = uploaded_files if isinstance(uploaded_files, list) else [uploaded_files]
-                st.session_state.resumes_to_analyze = []
+                # Note: We append to the existing list, not reset it, to maintain approval statuses.
+                # st.session_state.resumes_to_analyze = [] # REMOVED: prevents clearing existing data/statuses
                 count = 0
                 with st.spinner("Parsing resume(s)... This may take a moment."):
+                    # Collect existing names to prevent accidental duplicates without ID checks
+                    existing_names = {r['name'] for r in st.session_state.resumes_to_analyze}
+                    
                     for file in files_to_process:
                         if file:
                             # Use parse_and_store_resume logic, but store results in a list
                             result = parse_and_store_resume(file, file_name_key='admin_analysis')
                             
-                            if "error" not in result:
+                            if "error" not in result and result['name'] not in existing_names:
                                 st.session_state.resumes_to_analyze.append(result)
                                 count += 1
+                            elif result['name'] in existing_names:
+                                st.warning(f"Resume for **{result['name']}** already loaded. Skipping upload.")
                             else:
                                 st.error(f"Failed to parse {file.name}: {result['error']}")
 
                 if count > 0:
-                    st.success(f"Successfully loaded and parsed {count} resume(s) for analysis.")
+                    st.success(f"Successfully loaded and parsed {count} new resume(s) for analysis.")
                 elif not st.session_state.resumes_to_analyze:
                     st.warning("No resumes were successfully loaded and parsed.")
             else:
@@ -712,13 +726,17 @@ def admin_dashboard():
             # Create a simple table/summary of results
             display_data = []
             for item in results_df:
+                # Find the corresponding status from resumes_to_analyze (matching by name is sufficient for demo)
+                status = next((r['status'] for r in st.session_state.resumes_to_analyze if r['name'] == item["resume_name"]), 'N/A')
+                
                 display_data.append({
                     "Resume": item["resume_name"],
                     "JD": item["jd_name"],
                     "Fit Score (out of 10)": item["overall_score"],
                     "Skills (%)": item.get("skills_percent", "N/A"),
                     "Experience (%)": item.get("experience_percent", "N/A"), 
-                    "Education (%)": item.get("education_percent", "N/A"),   
+                    "Education (%)": item.get("education_percent", "N/A"), 
+                    "Approval Status": status  # Added status here
                 })
 
             st.dataframe(display_data, use_container_width=True)
@@ -730,8 +748,8 @@ def admin_dashboard():
                 with st.expander(header_text):
                     st.markdown(item['full_analysis'])
 
-    # --- NEW TAB 3: Candidate Approval ---
-    with tab_approval:
+    # --- TAB 3: Candidate Approval ---
+    with tab_candidate:
         st.subheader("Review and Approve Candidate Resumes")
         
         if not st.session_state.resumes_to_analyze:
@@ -739,9 +757,6 @@ def admin_dashboard():
             return
 
         st.markdown("### Resume Status List")
-
-        # Create a list to track updates
-        new_resume_list = []
         
         # Display the resumes in a loop for status update
         for idx, resume_data in enumerate(st.session_state.resumes_to_analyze):
@@ -762,17 +777,87 @@ def admin_dashboard():
                     "Set Status",
                     ["Pending", "Approved", "Rejected"],
                     index=["Pending", "Approved", "Rejected"].index(current_status),
-                    key=f"status_select_{idx}"
+                    key=f"candidate_status_select_{idx}"
                 )
                 
             with col3:
                 # Button to update the status
-                if st.button("Update", key=f"update_btn_{idx}"):
+                if st.button("Update", key=f"candidate_update_btn_{idx}"):
                     st.session_state.resumes_to_analyze[idx]['status'] = new_status
                     st.success(f"Status for **{resume_name}** updated to **{new_status}**.")
                     st.rerun() # Rerun to refresh the list with the updated status
 
             st.markdown("---") # Separator for each resume
+
+    # --- NEW TAB 4: Vendor Approval ---
+    with tab_vendor:
+        st.subheader("Manage and Approve Service Vendors")
+        
+        # 1. Add New Vendor Form
+        st.markdown("#### 1. Add New Vendor")
+        with st.form("new_vendor_form"):
+            vendor_name = st.text_input("Vendor Name", key="vendor_name_input")
+            vendor_domain = st.text_input("Service Domain (e.g., Training, IT, Logistics)", key="vendor_domain_input")
+            submitted = st.form_submit_button("Add Vendor")
+            
+            if submitted:
+                if vendor_name and vendor_domain:
+                    # Check for duplicates before adding
+                    is_duplicate = any(v['name'].lower() == vendor_name.lower() for v in st.session_state.vendors_to_analyze)
+                    if not is_duplicate:
+                        st.session_state.vendors_to_analyze.append({
+                            "id": str(len(st.session_state.vendors_to_analyze) + 1),
+                            "name": vendor_name.strip(),
+                            "domain": vendor_domain.strip(),
+                            "status": "Pending"
+                        })
+                        st.success(f"Vendor '{vendor_name}' added successfully with status: Pending.")
+                    else:
+                        st.warning(f"Vendor '{vendor_name}' already exists.")
+                else:
+                    st.error("Please fill in both Vendor Name and Service Domain.")
+        
+        st.markdown("---")
+        
+        # 2. Approval List
+        st.markdown("#### 2. Vendor Approval List")
+
+        if not st.session_state.vendors_to_analyze:
+            st.info("No vendors have been added yet.")
+            return
+
+        # Display the vendors in a loop for status update
+        for idx, vendor_data in enumerate(st.session_state.vendors_to_analyze):
+            
+            vendor_name = vendor_data['name']
+            current_status = vendor_data.get('status', 'Pending')
+            vendor_domain = vendor_data['domain']
+
+            col1, col2, col3 = st.columns([0.4, 0.4, 0.2])
+            
+            with col1:
+                st.markdown(f"**Vendor:** {vendor_name}")
+                st.markdown(f"**Domain:** {vendor_domain}")
+                st.markdown(f"**Current Status:** **{current_status}**")
+
+            with col2:
+                # Use a unique key based on the index to isolate the selectbox
+                new_status = st.selectbox(
+                    "Set Status",
+                    ["Pending", "Approved", "Rejected"],
+                    index=["Pending", "Approved", "Rejected"].index(current_status),
+                    key=f"vendor_status_select_{idx}"
+                )
+                
+            with col3:
+                # Button to update the status
+                if st.button("Update", key=f"vendor_update_btn_{idx}"):
+                    st.session_state.vendors_to_analyze[idx]['status'] = new_status
+                    st.success(f"Status for **{vendor_name}** updated to **{new_status}**.")
+                    st.rerun() # Rerun to refresh the list with the updated status
+
+            st.markdown("---") # Separator for each vendor
+
 
 # Candidate Dashboard is updated here
 def candidate_dashboard():
@@ -1149,10 +1234,10 @@ def main():
         st.session_state.jd_fit_output = ""
         
         # Admin Dashboard specific lists
-        st.session_state.admin_jd_list = [] # For Admin Dashboard (list of dicts: {'name', 'content'})
-        # NOTE: Each item in 'resumes_to_analyze' now includes a 'status' key!
-        st.session_state.resumes_to_analyze = [] # For Admin Dashboard (list of dicts: {'name', 'parsed', 'full_text', 'status'})
-        st.session_state.admin_match_results = [] # For Admin Dashboard match results
+        st.session_state.admin_jd_list = [] 
+        st.session_state.resumes_to_analyze = [] # list of dicts: {'name', 'parsed', 'full_text', 'status'}
+        st.session_state.admin_match_results = [] 
+        st.session_state.vendors_to_analyze = [] # NEW: list of dicts: {'id', 'name', 'domain', 'status'}
         
         # Candidate Dashboard specific lists
         st.session_state.candidate_jd_list = []
