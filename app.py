@@ -12,6 +12,7 @@ import re
 from dotenv import load_dotenv 
 from datetime import date 
 import csv 
+import time # Import for the retry mechanism
 
 # Ensure that UploadedFile class is accessible for type checking
 from streamlit.runtime.uploaded_file_manager import UploadedFile
@@ -200,15 +201,22 @@ def extract_jd_metadata(jd_text):
         return {"role": "General Analyst (LLM Error)", "job_type": "Full-time (LLM Error)", "key_skills": ["LLM Error", "Fallback"]}
 
 
+# --- CRITICAL FIX APPLIED HERE: ADDED RETRY MECHANISM ---
 @st.cache_data(show_spinner="Analyzing content with Groq LLM...")
 def parse_with_llm(text, return_type='json'):
-    """Sends resume text to the LLM for structured information extraction."""
+    """Sends resume text to the LLM for structured information extraction with a retry mechanism."""
     if text.startswith("Error"):
         return {"error": text, "raw_output": ""}
     if not GROQ_API_KEY:
         return {"error": "GROQ_API_KEY not set. Cannot run LLM parsing.", "raw_output": ""}
 
-    prompt = f"""Extract the following information from the resume in structured JSON.
+    MAX_RETRIES = 3
+    content = ""
+    parsed = {}
+    last_error = None
+    
+    # Base prompt that encourages strict JSON output
+    base_prompt = f"""Extract the following information from the resume in structured JSON.
     Ensure all relevant details for each category are captured.
     - Name, - Email, - Phone, - Skills, - Education (list of degrees/institutions/dates), 
     - Experience (list of job roles/companies/dates/responsibilities), - Certifications (list), 
@@ -218,52 +226,71 @@ def parse_with_llm(text, return_type='json'):
     Resume Text:
     {text}
     
-    Provide the output strictly as a JSON object.
+    Provide the output strictly as a JSON object ONLY, with no surrounding text, comments, or markdown fences.
     """
-    content = ""
-    parsed = {}
-    try:
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2
-        )
-        content = response.choices[0].message.content.strip()
 
-        # --- FIX: AGGRESSIVELY ISOLATE THE JSON OBJECT ---
-        json_str = content
+    for attempt in range(MAX_RETRIES):
         
-        # 1. Strip common LLM fences and surrounding whitespace
-        if json_str.startswith('```json'):
-            json_str = json_str[len('```json'):]
-        if json_str.endswith('```'):
-            json_str = json_str[:-len('```')]
-        json_str = json_str.strip()
+        try:
+            # Modify prompt slightly on retry to ask for strict formatting again
+            current_prompt = base_prompt
+            if attempt > 0:
+                 st.toast(f"Retrying LLM parsing (Attempt {attempt + 1}/{MAX_RETRIES})...")
+                 # Add a clear instruction for the LLM to clean up
+                 current_prompt = f"ATTENTION: PREVIOUS OUTPUT FAILED JSON PARSING. Please regenerate the JSON output ONLY, strictly adhering to the requested format with NO extra characters or text. \n\n{base_prompt}"
+                 time.sleep(1) # Wait briefly before calling API again
 
-        # 2. Find the index of the first '{' and the last '}'
-        json_start = json_str.find('{')
-        json_end = json_str.rfind('}') + 1 # Include the '}' itself
+            response = client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[{"role": "user", "content": current_prompt}],
+                temperature=0.2 + (attempt * 0.1) # Slightly increase temperature on retry
+            )
+            content = response.choices[0].message.content.strip()
 
-        # 3. CRITICAL: Only slice the content between the first '{' and the last '}'
-        # This is the primary defense against the "Extra data" error.
-        if json_start != -1 and json_end != -1 and json_end > json_start:
-            json_str = json_str[json_start:json_end]
-        else:
-            # If we can't find a clear JSON object, raise an error 
-            raise json.JSONDecodeError("Could not isolate a valid JSON structure from LLM response.", content, 0)
+            # --- AGGRESSIVELY ISOLATE THE JSON OBJECT ---
+            json_str = content
+            
+            # 1. Strip common LLM fences and surrounding whitespace
+            if json_str.startswith('```json'):
+                json_str = json_str[len('```json'):]
+            if json_str.endswith('```'):
+                json_str = json_str[:-len('```')]
+            json_str = json_str.strip()
 
+            # 2. Find the index of the first '{' and the last '}'
+            json_start = json_str.find('{')
+            json_end = json_str.rfind('}') + 1 # Include the '}' itself
 
-        parsed = json.loads(json_str)
+            # 3. CRITICAL: Only slice the content between the first '{' and the last '}'
+            if json_start != -1 and json_end != -1 and json_end > json_start:
+                json_str = json_str[json_start:json_end]
+            else:
+                # If we can't find a clear JSON object, force a retry/error
+                raise json.JSONDecodeError("Could not isolate a valid JSON structure from LLM response.", content, 0)
 
-    except json.JSONDecodeError as e:
-        error_msg = f"JSON decoding error from LLM. LLM returned malformed JSON. Error: {e}"
+            # 4. Attempt final parse
+            parsed = json.loads(json_str)
+            
+            # If successful, break the loop and return
+            if return_type == 'json':
+                return parsed
+            break # Exit the retry loop on success
+
+        except json.JSONDecodeError as e:
+            last_error = e
+            # Continue to the next attempt
+        except ValueError as e: # Catch the MockGroqClient error
+            parsed = {"error": str(e), "raw_output": "AI functions disabled."}
+            return parsed
+        except Exception as e:
+            last_error = e
+            # Continue to the next attempt (e.g., API errors, timeout)
+            
+    # If the loop finishes without success after max retries
+    if last_error:
+        error_msg = f"JSON decoding failed after {MAX_RETRIES} attempts. Last Error: {last_error}"
         parsed = {"error": error_msg, "raw_output": content}
-    except ValueError as e: # Catch the MockGroqClient error
-        parsed = {"error": str(e), "raw_output": "AI functions disabled."}
-    except Exception as e:
-        error_msg = f"LLM API interaction error: {e}"
-        parsed = {"error": error_msg, "raw_output": "No LLM response due to API error."}
-
+        
     if return_type == 'json':
         return parsed
     elif return_type == 'markdown':
@@ -964,7 +991,7 @@ def admin_dashboard():
             uploaded_files = st.file_uploader(
                 "Upload JD file(s)",
                 type=["pdf", "txt", "docx"],
-                accept_multiple_files=(jd_type == "Multiple JD"), # Dynamically set
+                accept_multiple_files=(jd_type == "Multiple JD"),
                 key="jd_file_uploader_admin"
             )
             
@@ -2139,7 +2166,7 @@ def candidate_dashboard():
             uploaded_files = st.file_uploader(
                 "Upload JD file(s)",
                 type=["pdf", "txt", "docx"],
-                accept_multiple_files=(jd_type == "Multiple JD"), # Dynamically set
+                accept_multiple_files=(jd_type == "Multiple JD"),
                 key="jd_file_uploader_candidate"
             )
             if st.button("Add JD(s) from File", key="add_jd_file_btn_candidate"):
