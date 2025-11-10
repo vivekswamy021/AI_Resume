@@ -5,38 +5,46 @@ import traceback
 import tempfile
 import os
 from datetime import date
-# Assuming OpenAI is used for the robust chatbot
+from groq import Groq # <--- REPLACED from openai import OpenAI
 
 # Define the main function for the Candidate Dashboard
 # It takes necessary utility functions from app.py as arguments
 def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_interview_answers, generate_interview_questions, question_section_options, extract_jd_metadata, get_file_type, extract_content, extract_jd_from_linkedin_url, clear_interview_state, evaluate_jd_fit, DEFAULT_JOB_TYPES, DEFAULT_ROLES, qa_on_jd=None):
     
-    # --- HELPER FUNCTIONS FOR ROBUST JD CHATBOT ---
+    # --- HELPER FUNCTIONS FOR ROBUST JD CHATBOT (UPDATED FOR GROQ) ---
     
     @st.cache_resource
-    def get_openai_client():
-        """Initializes and returns the OpenAI client, safely handling API key."""
+    def get_groq_client(): # <--- RENAMED AND UPDATED
+        """Initializes and returns the Groq client, safely handling API key."""
         try:
-            # Assumes API key is stored in .streamlit/secrets.toml
-            api_key = st.secrets["openai_api_key"]
+            # Assumes Groq API key is stored in .streamlit/secrets.toml
+            api_key = st.secrets["groq_api_key"]
         except KeyError:
             # Handle if the key is not configured
-            st.error("OpenAI API key not found in Streamlit secrets. The JD Chatbot will not function.")
+            st.error("Groq API key not found in Streamlit secrets. The JD Chatbot will not function.")
             return None
-        return OpenAI(api_key=api_key)
-
+        return Groq(api_key=api_key) # <--- USING GROQ CLIENT
+    
+    # 2. LLM Interaction Function (UPDATED FOR GROQ)
     def generate_jd_response(client, messages):
-        """Generates a streaming response from the LLM based on conversation history."""
+        """Generates a streaming response from the Groq LLM based on conversation history."""
         if client is None:
             return "Error: LLM client not initialized."
 
         # Use st.write_stream for a dynamic, real-time response experience
         with st.chat_message("assistant"):
+            
+            # --- Groq-Specific Model Selection ---
+            # Mixtral 8x7B is a fast and capable model on Groq
+            GROQ_MODEL = "mixtral-8x7b-32768" 
+            
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",  # Use a suitable model
+                model=GROQ_MODEL, 
                 messages=messages,
                 stream=True
             )
+            
+            # The full_response is accumulated and returned for history logging
             full_response = st.write_stream(response)
             return full_response
             
@@ -686,7 +694,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                  st.error("Please **add Job Descriptions** in the 'JD Management' tab (Tab 4) before using this chatbot.")
             else:
                 # --- ROBUST JD CHATBOT LOGIC START ---
-                client = get_openai_client()
+                client = get_groq_client() # <--- CALLING GROQ CLIENT
                 
                 # 1. JD Selection
                 st.markdown("#### 1. Select Job Description (JD) for Context")
@@ -728,7 +736,8 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                 elif client: # Proceed only if client is initialized
                     
                     # Initialize chat history if empty or if JD text changed
-                    if not st.session_state.get('jd_chatbot_messages') or st.session_state.jd_chatbot_messages[0].get('content') != jd_text:
+                    # The content check prevents accidental reset if the same JD is re-selected, but allows reset if a new JD is picked.
+                    if not st.session_state.get('jd_chatbot_messages') or (st.session_state.jd_chatbot_messages and st.session_state.jd_chatbot_messages[0].get('content') != jd_text):
                         system_prompt = (
                             "You are a helpful and experienced technical recruiter. "
                             "Your task is to analyze the provided Job Description (JD) and answer "
