@@ -1,226 +1,223 @@
+# =================================================================
+# admin_dashboard_page.py
+# Contains the UI logic for the Admin Dashboard
+# =================================================================
+
 import streamlit as st
-import json
 import re
-import traceback
 from datetime import date
-import tempfile
-import os
+from app_utils import go_to, extract_jd_from_linkedin_url, extract_jd_metadata, get_file_type, extract_content, parse_and_store_resume, evaluate_jd_fit, traceback, tempfile, os, json
 
-# Define the main function for the Admin Dashboard
-# It takes necessary utility functions from app.py as arguments
-def admin_dashboard(go_to, extract_jd_metadata, parse_and_store_resume, evaluate_jd_fit, get_file_type, extract_content, extract_jd_from_linkedin_url):
+
+def update_resume_status(resume_name, new_status, applied_jd, submitted_date, resume_list_index):
+    """Callback function to update the status and metadata of a specific resume."""
+    st.session_state.resume_statuses[resume_name] = new_status
     
-    # --- Helper functions that interact with session state ---
-    def update_resume_status(resume_name, new_status, applied_jd, submitted_date, resume_list_index):
-        st.session_state.resume_statuses[resume_name] = new_status
+    if 0 <= resume_list_index < len(st.session_state.resumes_to_analyze):
+        st.session_state.resumes_to_analyze[resume_list_index]['applied_jd'] = applied_jd
+        st.session_state.resumes_to_analyze[resume_list_index]['submitted_date'] = submitted_date
+        st.success(f"Status and metadata for **{resume_name}** updated to **{new_status}**.")
+    else:
+        st.error(f"Error: Could not find resume index {resume_list_index} for update.")
         
-        if 0 <= resume_list_index < len(st.session_state.resumes_to_analyze):
-            st.session_state.resumes_to_analyze[resume_list_index]['applied_jd'] = applied_jd
-            st.session_state.resumes_to_analyze[resume_list_index]['submitted_date'] = submitted_date
-            st.success(f"Status and metadata for **{resume_name}** updated to **{new_status}**.")
-        else:
-            st.error(f"Error: Could not find resume index {resume_list_index} for update.")
-            
-    def candidate_approval_tab_content():
-        st.header("👤 Candidate Approval")
-        st.markdown("### Resume Status List")
+def candidate_approval_tab_content():
+    st.header("👤 Candidate Approval")
+    st.markdown("### Resume Status List")
+    
+    if "resumes_to_analyze" not in st.session_state or not st.session_state.resumes_to_analyze:
+        st.info("No resumes have been uploaded and parsed in the 'Resume Analysis' tab yet.")
+        return
         
-        if "resumes_to_analyze" not in st.session_state or not st.session_state.resumes_to_analyze:
-            st.info("No resumes have been uploaded and parsed in the 'Resume Analysis' tab yet.")
-            return
-            
-        jd_options = [item['name'].replace("--- Simulated JD for: ", "") for item in st.session_state.admin_jd_list]
-        jd_options.insert(0, "Select JD") 
+    jd_options = [item['name'].replace("--- Simulated JD for: ", "") for item in st.session_state.admin_jd_list]
+    jd_options.insert(0, "Select JD") 
 
-        for idx, resume_data in enumerate(st.session_state.resumes_to_analyze):
-            resume_name = resume_data['name']
-            current_status = st.session_state.resume_statuses.get(resume_name, "Pending")
-            
-            current_applied_jd = resume_data.get('applied_jd', 'N/A (Pending Assignment)')
-            current_submitted_date = resume_data.get('submitted_date', date.today().strftime("%Y-%m-%d"))
+    for idx, resume_data in enumerate(st.session_state.resumes_to_analyze):
+        resume_name = resume_data['name']
+        current_status = st.session_state.resume_statuses.get(resume_name, "Pending")
+        
+        current_applied_jd = resume_data.get('applied_jd', 'N/A (Pending Assignment)')
+        current_submitted_date = resume_data.get('submitted_date', date.today().strftime("%Y-%m-%d"))
 
+        with st.container(border=True):
+            st.markdown(f"**Resume:** **{resume_name}**")
+            
+            col_jd_input, col_date_input = st.columns(2)
+            
+            with col_jd_input:
+                try:
+                    default_value = current_applied_jd if current_applied_jd != "N/A (Pending Assignment)" else "Select JD"
+                    jd_default_index = jd_options.index(default_value)
+                except ValueError:
+                    jd_default_index = 0
+                    
+                new_applied_jd = st.selectbox(
+                    "Applied for JD Title", 
+                    options=jd_options,
+                    index=jd_default_index,
+                    key=f"jd_select_{resume_name}_{idx}",
+                )
+                
+            with col_date_input:
+                try:
+                    date_obj = date.fromisoformat(current_submitted_date)
+                except (ValueError, TypeError):
+                    date_obj = date.today()
+                    
+                new_submitted_date = st.date_input(
+                    "Submitted Date", 
+                    value=date_obj,
+                    key=f"date_input_{resume_name}_{idx}"
+                )
+                
+            st.markdown(f"**Current Status:** **{current_status}**")
+            
+            st.markdown("---")
+            
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                st.markdown("Set Status:")
+                new_status = st.selectbox(
+                    "Set Status",
+                    ["Pending", "Approved", "Rejected", "Shortlisted"],
+                    index=["Pending", "Approved", "Rejected", "Shortlisted"].index(current_status),
+                    key=f"status_select_{resume_name}_{idx}",
+                    label_visibility="collapsed"
+                )
+
+            with col2:
+                if st.button("Update", key=f"update_btn_{resume_name}_{idx}"):
+                    
+                    if new_applied_jd == "Select JD" and len(jd_options) > 1:
+                        jd_to_save = "N/A (Pending Assignment)"
+                    else:
+                        jd_to_save = new_applied_jd
+                        
+                    update_resume_status(
+                        resume_name, 
+                        new_status, 
+                        jd_to_save, 
+                        new_submitted_date.strftime("%Y-%m-%d"),
+                        idx
+                    )
+                    st.rerun() 
+            
+    st.markdown("---")
+            
+    summary_data = []
+    for resume_data in st.session_state.resumes_to_analyze:
+        name = resume_data['name']
+        summary_data.append({
+            "Resume": name, 
+            "Applied JD": resume_data.get('applied_jd', 'N/A'),
+            "Submitted Date": resume_data.get('submitted_date', 'N/A'),
+            "Status": st.session_state.resume_statuses.get(name, "Pending")
+        })
+        
+    st.subheader("Summary of All Resumes")
+    st.dataframe(summary_data, use_container_width=True)
+
+
+def vendor_approval_tab_content():
+    st.header("🤝 Vendor Approval") 
+    
+    st.markdown("### 1. Add New Vendor")
+    if "vendors" not in st.session_state: st.session_state.vendors = []
+    if "vendor_statuses" not in st.session_state: st.session_state.vendor_statuses = {}
+        
+    with st.form("add_vendor_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            vendor_name = st.text_input("Vendor Name", key="new_vendor_name")
+        with col2:
+            vendor_domain = st.text_input("Service / Domain Name", key="new_vendor_domain")
+            
+        col3, col4 = st.columns(2)
+        with col3:
+            submitted_date = st.date_input("Submitted Date", value=date.today(), key="new_vendor_date")
+        with col4:
+            initial_status = st.selectbox(
+                "Set Status", 
+                ["Pending Review", "Approved", "Rejected"],
+                key="new_vendor_status"
+            )
+        
+        add_vendor_button = st.form_submit_button("Add Vendor", use_container_width=True)
+
+        if add_vendor_button:
+            if vendor_name and vendor_domain:
+                vendor_id = vendor_name.strip() 
+                
+                if vendor_id in st.session_state.vendor_statuses:
+                    st.warning(f"Vendor '{vendor_name}' already exists.")
+                else:
+                    new_vendor = {
+                        'name': vendor_name.strip(),
+                        'domain': vendor_domain.strip(),
+                        'submitted_date': submitted_date.strftime("%Y-%m-%d")
+                    }
+                    st.session_state.vendors.append(new_vendor)
+                    st.session_state.vendor_statuses[vendor_id] = initial_status
+                    st.success(f"Vendor **{vendor_name}** added successfully with status **{initial_status}**.")
+                    st.rerun() 
+            else:
+                st.error("Please fill in both Vendor Name and Service / Domain Name.")
+
+    st.markdown("---")
+    
+    st.markdown("### 2. Update Existing Vendor Status")
+    
+    if not st.session_state.vendors:
+        st.info("No vendors have been added yet.")
+    else:
+        for idx, vendor in enumerate(st.session_state.vendors):
+            vendor_name = vendor['name']
+            vendor_id = vendor_name 
+            current_status = st.session_state.vendor_statuses.get(vendor_id, "Unknown")
+            
             with st.container(border=True):
-                st.markdown(f"**Resume:** **{resume_name}**")
                 
-                col_jd_input, col_date_input = st.columns(2)
+                col_info, col_status_input, col_update_btn = st.columns([3, 2, 1])
                 
-                with col_jd_input:
-                    try:
-                        default_value = current_applied_jd if current_applied_jd != "N/A (Pending Assignment)" else "Select JD"
-                        jd_default_index = jd_options.index(default_value)
-                    except ValueError:
-                        jd_default_index = 0
-                        
-                    new_applied_jd = st.selectbox(
-                        "Applied for JD Title", 
-                        options=jd_options,
-                        index=jd_default_index,
-                        key=f"jd_select_{resume_name}_{idx}",
-                    )
+                with col_info:
+                    st.markdown(f"**Vendor:** {vendor_name} (`{vendor['domain']}`) - *Submitted: {vendor['submitted_date']}*")
+                    st.markdown(f"**Current Status:** **{current_status}**")
                     
-                with col_date_input:
-                    try:
-                        date_obj = date.fromisoformat(current_submitted_date)
-                    except (ValueError, TypeError):
-                        date_obj = date.today()
-                        
-                    new_submitted_date = st.date_input(
-                        "Submitted Date", 
-                        value=date_obj,
-                        key=f"date_input_{resume_name}_{idx}"
-                    )
-                    
-                st.markdown(f"**Current Status:** **{current_status}**")
-                
-                st.markdown("---")
-                
-                col1, col2 = st.columns([3, 1])
-                
-                with col1:
-                    st.markdown("Set Status:")
+                with col_status_input:
                     new_status = st.selectbox(
                         "Set Status",
-                        ["Pending", "Approved", "Rejected", "Shortlisted"],
-                        index=["Pending", "Approved", "Rejected", "Shortlisted"].index(current_status),
-                        key=f"status_select_{resume_name}_{idx}",
+                        ["Pending Review", "Approved", "Rejected"],
+                        index=["Pending Review", "Approved", "Rejected"].index(current_status),
+                        key=f"vendor_status_select_{idx}",
                         label_visibility="collapsed"
                     )
 
-                with col2:
-                    if st.button("Update", key=f"update_btn_{resume_name}_{idx}"):
+                with col_update_btn:
+                    st.markdown("##") 
+                    if st.button("Update", key=f"vendor_update_btn_{idx}", use_container_width=True):
                         
-                        if new_applied_jd == "Select JD" and len(jd_options) > 1:
-                            jd_to_save = "N/A (Pending Assignment)"
-                        else:
-                            jd_to_save = new_applied_jd
-                            
-                        update_resume_status(
-                            resume_name, 
-                            new_status, 
-                            jd_to_save, 
-                            new_submitted_date.strftime("%Y-%m-%d"),
-                            idx
-                        )
-                        st.rerun() 
-                
+                        st.session_state.vendor_statuses[vendor_id] = new_status
+                        
+                        st.success(f"Status for **{vendor_name}** updated to **{new_status}**.")
+                        st.rerun()
+                        
         st.markdown("---")
-                
+        
         summary_data = []
-        for resume_data in st.session_state.resumes_to_analyze:
-            name = resume_data['name']
+        for vendor in st.session_state.vendors:
+            name = vendor['name']
             summary_data.append({
-                "Resume": name, 
-                "Applied JD": resume_data.get('applied_jd', 'N/A'),
-                "Submitted Date": resume_data.get('submitted_date', 'N/A'),
-                "Status": st.session_state.resume_statuses.get(name, "Pending")
+                "Vendor Name": name,
+                "Domain": vendor['domain'],
+                "Submitted Date": vendor['submitted_date'],
+                "Status": st.session_state.vendor_statuses.get(name, "Unknown")
             })
-            
-        st.subheader("Summary of All Resumes")
+        
+        st.subheader("Summary of All Vendors")
         st.dataframe(summary_data, use_container_width=True)
 
 
-    def vendor_approval_tab_content():
-        st.header("🤝 Vendor Approval") 
-        
-        st.markdown("### 1. Add New Vendor")
-        if "vendors" not in st.session_state:
-            st.session_state.vendors = []
-        if "vendor_statuses" not in st.session_state:
-            st.session_state.vendor_statuses = {}
-            
-        with st.form("add_vendor_form"):
-            col1, col2 = st.columns(2)
-            with col1:
-                vendor_name = st.text_input("Vendor Name", key="new_vendor_name")
-            with col2:
-                vendor_domain = st.text_input("Service / Domain Name", key="new_vendor_domain")
-                
-            col3, col4 = st.columns(2)
-            with col3:
-                submitted_date = st.date_input("Submitted Date", value=date.today(), key="new_vendor_date")
-            with col4:
-                initial_status = st.selectbox(
-                    "Set Status", 
-                    ["Pending Review", "Approved", "Rejected"],
-                    key="new_vendor_status"
-                )
-            
-            add_vendor_button = st.form_submit_button("Add Vendor", use_container_width=True)
-
-            if add_vendor_button:
-                if vendor_name and vendor_domain:
-                    vendor_id = vendor_name.strip() 
-                    
-                    if vendor_id in st.session_state.vendor_statuses:
-                        st.warning(f"Vendor '{vendor_name}' already exists.")
-                    else:
-                        new_vendor = {
-                            'name': vendor_name.strip(),
-                            'domain': vendor_domain.strip(),
-                            'submitted_date': submitted_date.strftime("%Y-%m-%d")
-                        }
-                        st.session_state.vendors.append(new_vendor)
-                        st.session_state.vendor_statuses[vendor_id] = initial_status
-                        st.success(f"Vendor **{vendor_name}** added successfully with status **{initial_status}**.")
-                        st.rerun() 
-                else:
-                    st.error("Please fill in both Vendor Name and Service / Domain Name.")
-
-        st.markdown("---")
-        
-        st.markdown("### 2. Update Existing Vendor Status")
-        
-        if not st.session_state.vendors:
-            st.info("No vendors have been added yet.")
-        else:
-            for idx, vendor in enumerate(st.session_state.vendors):
-                vendor_name = vendor['name']
-                vendor_id = vendor_name 
-                current_status = st.session_state.vendor_statuses.get(vendor_id, "Unknown")
-                
-                with st.container(border=True):
-                    
-                    col_info, col_status_input, col_update_btn = st.columns([3, 2, 1])
-                    
-                    with col_info:
-                        st.markdown(f"**Vendor:** {vendor_name} (`{vendor['domain']}`) - *Submitted: {vendor['submitted_date']}*")
-                        st.markdown(f"**Current Status:** **{current_status}**")
-                        
-                    with col_status_input:
-                        new_status = st.selectbox(
-                            "Set Status",
-                            ["Pending Review", "Approved", "Rejected"],
-                            index=["Pending Review", "Approved", "Rejected"].index(current_status),
-                            key=f"vendor_status_select_{idx}",
-                            label_visibility="collapsed"
-                        )
-
-                    with col_update_btn:
-                        st.markdown("##") 
-                        if st.button("Update", key=f"vendor_update_btn_{idx}", use_container_width=True):
-                            
-                            st.session_state.vendor_statuses[vendor_id] = new_status
-                            
-                            st.success(f"Status for **{vendor_name}** updated to **{new_status}**.")
-                            st.rerun()
-                            
-            st.markdown("---")
-            
-            summary_data = []
-            for vendor in st.session_state.vendors:
-                name = vendor['name']
-                summary_data.append({
-                    "Vendor Name": name,
-                    "Domain": vendor['domain'],
-                    "Submitted Date": vendor['submitted_date'],
-                    "Status": st.session_state.vendor_statuses.get(name, "Unknown")
-                })
-            
-            st.subheader("Summary of All Vendors")
-            st.dataframe(summary_data, use_container_width=True)
-
-    # --- MAIN ADMIN DASHBOARD FUNCTION START ---
-    
+def admin_dashboard():
     st.header("🧑‍💼 Admin Dashboard")
     
     nav_col, _ = st.columns([1, 1]) 
@@ -243,8 +240,7 @@ def admin_dashboard(go_to, extract_jd_metadata, parse_and_store_resume, evaluate
         "🛠️ User Management", 
         "📈 Statistics" 
     ])
-    
-    # --- TAB 1: JD Management ---
+
     with tab_jd:
         st.subheader("Add and Manage Job Descriptions (JD)")
         
@@ -271,7 +267,7 @@ def admin_dashboard(go_to, extract_jd_metadata, parse_and_store_resume, evaluate
                             metadata = extract_jd_metadata(jd_text)
                         
                         name_base = url.split('/jobs/view/')[-1].split('/')[0] if '/jobs/view/' in url else f"URL {count+1}"
-                        st.session_state.admin_jd_list.append({"name": f"JD from URL: {name_base}", "content": jd_text, **metadata}) 
+                        st.session_state.admin_jd_list.append({"name": f"JD from URL: {name_base}", "content": jd_text, **metadata})
                         if not jd_text.startswith("[Error"):
                             count += 1
                             
@@ -429,16 +425,12 @@ def admin_dashboard(go_to, extract_jd_metadata, parse_and_store_resume, evaluate
         # 2. JD Selection and Analysis
         st.markdown("#### 2. Select JD and Run Analysis")
 
-        if not st.session_state.resumes_to_analyze and st.session_state.admin_jd_list:
+        if not st.session_state.resumes_to_analyze:
             st.info("Upload and parse resumes first to enable analysis.")
-            return
-        elif not st.session_state.admin_jd_list and st.session_state.resumes_to_analyze:
+            if not st.session_state.admin_jd_list: return
+        elif not st.session_state.admin_jd_list:
             st.error("Please add at least one Job Description in the 'JD Management' tab before running an analysis.")
             return
-        elif not st.session_state.resumes_to_analyze and not st.session_state.admin_jd_list:
-             st.info("Upload resumes and add JDs to run an analysis.")
-             return
-
 
         resume_names = [r['name'] for r in st.session_state.resumes_to_analyze]
         selected_resume_names = st.multiselect(
