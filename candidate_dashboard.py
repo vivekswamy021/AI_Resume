@@ -7,9 +7,7 @@ import os
 from datetime import date
 
 # Define the main function for the Candidate Dashboard
-# FIX: DEFAULT_JOB_TYPES and DEFAULT_ROLES must be defined before any keyword-collecting
-# argument (like **kwargs or a misspelled one) and before any optional/default arguments 
-# like qa_on_jd=None, or simply placed before the optional argument.
+# NOTE: All 15 required positional arguments must be present before qa_on_jd=None.
 
 def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_interview_answers, generate_interview_questions, question_section_options, extract_jd_metadata, get_file_type, extract_content, extract_jd_from_linkedin_url, clear_interview_state, evaluate_jd_fit, generate_skill_roadmap, DEFAULT_JOB_TYPES, DEFAULT_ROLES, qa_on_jd=None):
     
@@ -436,7 +434,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                 jd_job_type = jd.get('job_type', 'Full-time')
                 jd_key_skills = [
                     s.lower() for s in jd.get('key_skills', []) 
-                    if isinstance(s, str) and s.strip()
+                    if isinstance(s, str) and str(s).strip()
                 ]
                 
                 role_match = (selected_role == "All Roles") or (selected_role == jd_role)
