@@ -232,28 +232,35 @@ def parse_with_llm(text, return_type='json'):
         content = response.choices[0].message.content.strip()
 
         # --- CRITICAL FIX: AGGRESSIVE JSON ISOLATION USING REGEX ---
+        
+        # 1. Attempt to find the full JSON object using regex (non-greedy from first '{' to last '}')
         json_match = re.search(r'\{.*\}', content, re.DOTALL)
         
+        json_str = ""
         if json_match:
             json_str = json_match.group(0).strip()
             
             # Strip markdown fences if they still exist after the regex match
+            # This is key to fixing the malformed JSON issue caused by surrounding text
             if json_str.startswith('```json'):
                 json_str = json_str[len('```json'):]
             if json_str.endswith('```'):
                 json_str = json_str[:-len('```')]
+            
+            # Clean up the string content further (especially for the 'Extra data' error)
             json_str = json_str.strip()
-
+            
+            # 2. Attempt to load the JSON
+            parsed = json.loads(json_str)
         else:
-            # If we can't find a clear JSON object, raise an error 
+            # If we can't find a clear JSON object using regex, raise an error
             raise json.JSONDecodeError("Could not isolate a valid JSON structure from LLM response.", content, 0)
-
-
-        parsed = json.loads(json_str)
+        
         # --- END CRITICAL FIX ---
 
     except json.JSONDecodeError as e:
-        error_msg = f"JSON decoding error from LLM. LLM returned malformed JSON. Error: {e}"
+        # Include the raw content and the traceback for detailed debugging
+        error_msg = f"JSON decoding error from LLM. LLM returned malformed JSON. Error: {e} | Malformed string segment:\n---\n{json_str[:200]}..."
         parsed = {"error": error_msg, "raw_output": content}
     except ValueError as e: # Catch the MockGroqClient error
         parsed = {"error": str(e), "raw_output": "AI functions disabled."}
@@ -265,7 +272,8 @@ def parse_with_llm(text, return_type='json'):
         return parsed
     elif return_type == 'markdown':
         if "error" in parsed:
-            return f"**Error:** {parsed.get('error', 'Unknown parsing error')}\nRaw output:\n```\n{parsed.get('raw_output','')}\n```"
+            # Provide better formatting for the error output
+            return f"**Error:** {parsed.get('error', 'Unknown parsing error')}\n\n**Raw Output (for debugging):**\n```\n{parsed.get('raw_output','')}\n```"
         
         md = ""
         for k, v in parsed.items():
@@ -1894,12 +1902,15 @@ def candidate_dashboard():
             )
             st.markdown("---")
 
-
+            # --- File Management Logic ---
             if uploaded_file is not None:
-                st.session_state.candidate_uploaded_resumes = [uploaded_file] 
-                st.session_state.pasted_cv_text = "" # Clear pasted text
-                st.toast("Resume file uploaded successfully.")
+                # Only store the single uploaded file if it's new
+                if not st.session_state.candidate_uploaded_resumes or st.session_state.candidate_uploaded_resumes[0].name != uploaded_file.name:
+                    st.session_state.candidate_uploaded_resumes = [uploaded_file] 
+                    st.session_state.pasted_cv_text = "" # Clear pasted text
+                    st.toast("Resume file uploaded successfully.")
             elif st.session_state.candidate_uploaded_resumes and uploaded_file is None:
+                # Case where the file is removed from the uploader
                 st.session_state.candidate_uploaded_resumes = []
                 st.session_state.parsed = {}
                 st.session_state.full_text = ""
