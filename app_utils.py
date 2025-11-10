@@ -232,7 +232,6 @@ def parse_with_llm(text, return_type='json'):
     if return_type == 'json':
         return parsed
     
-    # ... (Markdown formatting logic can stay here if needed, but simplified for brevity)
     return parsed
 
 def extract_jd_from_linkedin_url(url: str) -> str:
