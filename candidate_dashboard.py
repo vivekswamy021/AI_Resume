@@ -8,8 +8,8 @@ from datetime import date
 # Groq import is removed as the generic JD Chatbot was removed in the previous turn.
 
 # Define the main function for the Candidate Dashboard
-# It takes necessary utility functions from app.py as arguments
-def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_interview_answers, generate_interview_questions, question_section_options, extract_jd_metadata, get_file_type, extract_content, extract_jd_from_linkedin_url, clear_interview_state, evaluate_jd_fit, DEFAULT_JOB_TYPES, DEFAULT_ROLES, qa_on_jd=None):
+# NOTE: The function signature has been updated to include 'generate_skill_roadmap'.
+def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_interview_answers, generate_interview_questions, question_section_options, extract_jd_metadata, get_file_type, extract_content, extract_jd_from_linkedin_url, clear_interview_state, evaluate_jd_fit, generate_skill_roadmap, DEFAULT_JOB_TYPES, DEFAULT_ROLES, qa_on_jd=None):
     
     # --- HELPER FUNCTIONS (Placeholder function for removed JD Chatbot) ---
     
@@ -283,9 +283,10 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
             st.session_state.candidate_match_results = []
             st.session_state.interview_qa = []
             st.session_state.evaluation_report = ""
-            # Clear JD Interview state as well
             st.session_state.jd_interview_qa = [] 
             st.session_state.jd_evaluation_report = "" 
+            st.session_state.skill_roadmap_report = "" # Clear roadmap state
+            st.session_state.selected_roadmap_jd_name = "" 
 
             st.success(f"✅ CV data for **{st.session_state.parsed['name']}** successfully generated and loaded! You can now use the Chatbot, Match, and Interview Prep tabs.")
             
@@ -505,11 +506,13 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
 
     is_resume_parsed = bool(st.session_state.get('parsed', {}).get('name')) or bool(st.session_state.get('full_text'))
     
-    tab_cv_mgmt, tab1, tab_resume_qa, tab_interview_prep, tab4, tab5, tab6 = st.tabs([
+    # Updated Tab List to include the new tab_roadmap
+    tab_cv_mgmt, tab1, tab_resume_qa, tab_interview_prep, tab_roadmap, tab4, tab5, tab6 = st.tabs([
         "✍️ CV Management", 
         "📄 Resume Parsing", 
         "💬 Resume Chatbot (Q&A)", 
         "❓ Interview Prep", 
+        "🗺️ Skill Roadmap", # New Tab Title
         "📚 JD Management", 
         "🎯 Batch JD Match",
         "🔍 Filter JD"
@@ -577,8 +580,11 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                             st.session_state.excel_data = result['excel_data'] 
                             st.session_state.parsed['name'] = result['name'] 
                             clear_interview_state()
-                            st.session_state.jd_interview_qa = [] # Clear JD Interview state
+                            st.session_state.jd_interview_qa = [] 
                             st.session_state.jd_evaluation_report = "" 
+                            st.session_state.skill_roadmap_report = "" # Clear roadmap state
+                            st.session_state.selected_roadmap_jd_name = "" 
+
                             st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
                             st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
                         else:
@@ -616,8 +622,11 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                             st.session_state.excel_data = result['excel_data'] 
                             st.session_state.parsed['name'] = result['name'] 
                             clear_interview_state()
-                            st.session_state.jd_interview_qa = [] # Clear JD Interview state
+                            st.session_state.jd_interview_qa = [] 
                             st.session_state.jd_evaluation_report = "" 
+                            st.session_state.skill_roadmap_report = "" # Clear roadmap state
+                            st.session_state.selected_roadmap_jd_name = "" 
+
                             st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
                             st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
                         else:
@@ -628,7 +637,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                 st.info("Please paste your CV text into the box above.")
 
 
-    # --- TAB 2: Resume Chatbot (Q&A) (Now tab_resume_qa) ---
+    # --- TAB 2: Resume Chatbot (Q&A) ---
     with tab_resume_qa:
         st.header("Resume Chatbot (Q&A)") # Simplified header
         
@@ -656,7 +665,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                     
 
 
-    # --- TAB 3: Interview Prep (Now tab_interview_prep) ---
+    # --- TAB 3: Interview Prep ---
     with tab_interview_prep:
         st.header("Interview Preparation Tools")
         
@@ -762,7 +771,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                         st.markdown(st.session_state.evaluation_report)
 
             
-            # --- Subtab 2: JD-Specific Practice (NEW) ---
+            # --- Subtab 2: JD-Specific Practice ---
             with tab_jd_qa_prep:
                 
                 if not st.session_state.get('candidate_jd_list'):
@@ -872,7 +881,75 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                             st.markdown(st.session_state.jd_evaluation_report)
 
 
-    # --- TAB 4: JD Management (Candidate) ---
+    # --- TAB 4: Skill Roadmap (NEW) ---
+    with tab_roadmap:
+        st.header("🗺️ Skill Roadmap & Gap Analysis")
+        st.markdown("Identify your skill gaps for a specific job description and get a personalized development plan.")
+        
+        # Initialize state for this tab
+        if 'skill_roadmap_report' not in st.session_state: st.session_state.skill_roadmap_report = ""
+        if 'selected_roadmap_jd_name' not in st.session_state: st.session_state.selected_roadmap_jd_name = ""
+        
+        if not is_resume_parsed:
+            st.warning("❌ **Action Required:** Please upload and successfully parse your resume in the 'Resume Parsing' tab first.")
+            
+        elif not st.session_state.get('candidate_jd_list'):
+            st.error("❌ **Action Required:** Please add Job Descriptions in the 'JD Management' tab before running a skill roadmap analysis.")
+            
+        else:
+            jd_options = [jd['name'] for jd in st.session_state.candidate_jd_list]
+            
+            selected_jd_name = st.selectbox(
+                "1. Choose a JD for Skill Gap Analysis:",
+                options=["-- Select a JD --"] + jd_options,
+                index=0 if st.session_state.selected_roadmap_jd_name not in jd_options else jd_options.index(st.session_state.selected_roadmap_jd_name) + 1,
+                key="roadmap_jd_selector"
+            )
+
+            selected_jd_data = None
+            if selected_jd_name and selected_jd_name != "-- Select a JD --":
+                selected_jd_data = next(
+                    (item for item in st.session_state.candidate_jd_list if item['name'] == selected_jd_name),
+                    None
+                )
+                st.session_state.selected_roadmap_jd_name = selected_jd_name
+            else:
+                selected_jd_name = None
+                st.session_state.selected_roadmap_jd_name = ""
+
+
+            st.markdown("---")
+
+            if selected_jd_data:
+                
+                if st.button(f"Generate Skill Roadmap for **{selected_jd_name}**", key='generate_roadmap_btn', use_container_width=True):
+                    with st.spinner("Analyzing skill gaps and generating personalized roadmap..."):
+                        try:
+                            roadmap_report = generate_skill_roadmap(
+                                selected_jd_data['content'],
+                                st.session_state.parsed
+                            )
+                            st.session_state.skill_roadmap_report = roadmap_report
+                            st.success("✅ Roadmap generated successfully! See details below.")
+                            
+                        except Exception as e:
+                            st.error(f"Error generating roadmap: {e}")
+                            st.session_state.skill_roadmap_report = f"Error generating roadmap: {e}\n{traceback.format_exc()}"
+                
+                
+                st.markdown("---")
+                st.subheader("2. Personalized Skill Roadmap")
+                
+                if st.session_state.get('skill_roadmap_report'):
+                    st.markdown(st.session_state.skill_roadmap_report)
+                else:
+                    st.info("Click the button above to generate your skill roadmap based on the selected JD.")
+
+            else:
+                 st.info("Please select a Job Description to proceed with the Skill Roadmap analysis.")
+
+
+    # --- TAB 5: JD Management (Candidate) ---
     with tab4:
         st.header("📚 Manage Job Descriptions for Matching")
         
@@ -986,9 +1063,10 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                     st.session_state.candidate_jd_list = []
                     st.session_state.candidate_match_results = [] 
                     st.session_state.filtered_jds_display = [] 
-                    # Clear JD Interview state as well
                     st.session_state.jd_interview_qa = [] 
                     st.session_state.jd_evaluation_report = "" 
+                    st.session_state.skill_roadmap_report = "" # Clear roadmap state
+                    st.session_state.selected_roadmap_jd_name = "" 
                     st.success("All JDs and associated data have been cleared.")
                     st.rerun() 
 
@@ -1002,7 +1080,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
         else:
             st.info("No Job Descriptions added yet.")
 
-    # --- TAB 5: Batch JD Match (Candidate) ---
+    # --- TAB 6: Batch JD Match (Candidate) ---
     with tab5:
         st.header("🎯 Batch JD Match: Best Matches")
         st.markdown("Compare your current resume against all saved job descriptions.")
@@ -1139,6 +1217,6 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                     with st.expander(header_text):
                         st.markdown(item['full_analysis'])
 
-    # --- TAB 6: Filter JD (NEW) ---
+    # --- TAB 7: Filter JD (Updated from tab6) ---
     with tab6:
         filter_jd_tab_content()
