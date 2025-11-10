@@ -12,7 +12,6 @@ import re
 from dotenv import load_dotenv 
 from datetime import date 
 import csv 
-import time # Import for the retry mechanism
 
 # Ensure that UploadedFile class is accessible for type checking
 from streamlit.runtime.uploaded_file_manager import UploadedFile
@@ -201,22 +200,15 @@ def extract_jd_metadata(jd_text):
         return {"role": "General Analyst (LLM Error)", "job_type": "Full-time (LLM Error)", "key_skills": ["LLM Error", "Fallback"]}
 
 
-# --- CRITICAL FIX APPLIED HERE: ADDED RETRY MECHANISM ---
 @st.cache_data(show_spinner="Analyzing content with Groq LLM...")
 def parse_with_llm(text, return_type='json'):
-    """Sends resume text to the LLM for structured information extraction with a retry mechanism."""
+    """Sends resume text to the LLM for structured information extraction."""
     if text.startswith("Error"):
         return {"error": text, "raw_output": ""}
     if not GROQ_API_KEY:
         return {"error": "GROQ_API_KEY not set. Cannot run LLM parsing.", "raw_output": ""}
 
-    MAX_RETRIES = 3
-    content = ""
-    parsed = {}
-    last_error = None
-    
-    # Base prompt that encourages strict JSON output
-    base_prompt = f"""Extract the following information from the resume in structured JSON.
+    prompt = f"""Extract the following information from the resume in structured JSON.
     Ensure all relevant details for each category are captured.
     - Name, - Email, - Phone, - Skills, - Education (list of degrees/institutions/dates), 
     - Experience (list of job roles/companies/dates/responsibilities), - Certifications (list), 
@@ -226,71 +218,51 @@ def parse_with_llm(text, return_type='json'):
     Resume Text:
     {text}
     
-    Provide the output strictly as a JSON object ONLY, with no surrounding text, comments, or markdown fences.
+    Provide the output strictly as a JSON object.
     """
+    content = ""
+    parsed = {}
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2
+        )
+        content = response.choices[0].message.content.strip()
 
-    for attempt in range(MAX_RETRIES):
+        # --- FIX: AGGRESSIVELY ISOLATE THE JSON OBJECT ---
+        json_str = content
         
-        try:
-            # Modify prompt slightly on retry to ask for strict formatting again
-            current_prompt = base_prompt
-            if attempt > 0:
-                 st.toast(f"Retrying LLM parsing (Attempt {attempt + 1}/{MAX_RETRIES})...")
-                 # Add a clear instruction for the LLM to clean up
-                 current_prompt = f"ATTENTION: PREVIOUS OUTPUT FAILED JSON PARSING. Please regenerate the JSON output ONLY, strictly adhering to the requested format with NO extra characters or text. \n\n{base_prompt}"
-                 time.sleep(1) # Wait briefly before calling API again
+        # 1. Strip common LLM fences and surrounding whitespace
+        if json_str.startswith('```json'):
+            json_str = json_str[len('```json'):]
+        if json_str.endswith('```'):
+            json_str = json_str[:-len('```')]
+        json_str = json_str.strip()
 
-            response = client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=[{"role": "user", "content": current_prompt}],
-                temperature=0.2 + (attempt * 0.1) # Slightly increase temperature on retry
-            )
-            content = response.choices[0].message.content.strip()
+        # 2. Find the index of the first '{' and the last '}'
+        json_start = json_str.find('{')
+        json_end = json_str.rfind('}') + 1 # Include the '}' itself
 
-            # --- AGGRESSIVELY ISOLATE THE JSON OBJECT ---
-            json_str = content
-            
-            # 1. Strip common LLM fences and surrounding whitespace
-            if json_str.startswith('```json'):
-                json_str = json_str[len('```json'):]
-            if json_str.endswith('```'):
-                json_str = json_str[:-len('```')]
-            json_str = json_str.strip()
+        # 3. CRITICAL: Only slice the content between the first '{' and the last '}'
+        if json_start != -1 and json_end != -1 and json_end > json_start:
+            json_str = json_str[json_start:json_end]
+        else:
+            # If we can't find a clear JSON object, raise an error 
+            raise json.JSONDecodeError("Could not isolate a valid JSON structure from LLM response.", content, 0)
 
-            # 2. Find the index of the first '{' and the last '}'
-            json_start = json_str.find('{')
-            json_end = json_str.rfind('}') + 1 # Include the '}' itself
 
-            # 3. CRITICAL: Only slice the content between the first '{' and the last '}'
-            if json_start != -1 and json_end != -1 and json_end > json_start:
-                json_str = json_str[json_start:json_end]
-            else:
-                # If we can't find a clear JSON object, force a retry/error
-                raise json.JSONDecodeError("Could not isolate a valid JSON structure from LLM response.", content, 0)
+        parsed = json.loads(json_str)
 
-            # 4. Attempt final parse
-            parsed = json.loads(json_str)
-            
-            # If successful, break the loop and return
-            if return_type == 'json':
-                return parsed
-            break # Exit the retry loop on success
-
-        except json.JSONDecodeError as e:
-            last_error = e
-            # Continue to the next attempt
-        except ValueError as e: # Catch the MockGroqClient error
-            parsed = {"error": str(e), "raw_output": "AI functions disabled."}
-            return parsed
-        except Exception as e:
-            last_error = e
-            # Continue to the next attempt (e.g., API errors, timeout)
-            
-    # If the loop finishes without success after max retries
-    if last_error:
-        error_msg = f"JSON decoding failed after {MAX_RETRIES} attempts. Last Error: {last_error}"
+    except json.JSONDecodeError as e:
+        error_msg = f"JSON decoding error from LLM. LLM returned malformed JSON. Error: {e}"
         parsed = {"error": error_msg, "raw_output": content}
-        
+    except ValueError as e: # Catch the MockGroqClient error
+        parsed = {"error": str(e), "raw_output": "AI functions disabled."}
+    except Exception as e:
+        error_msg = f"LLM API interaction error: {e}"
+        parsed = {"error": error_msg, "raw_output": "No LLM response due to API error."}
+
     if return_type == 'json':
         return parsed
     elif return_type == 'markdown':
@@ -418,62 +390,6 @@ def evaluate_jd_fit(job_description, parsed_json):
     )
     return response.choices[0].message.content.strip()
 
-# --- NEW FUNCTION FOR SKILL ROADMAP ---
-def generate_skill_roadmap(job_description, parsed_json, fit_analysis_report):
-    """Generates a detailed skill roadmap based on the JD-Resume gap analysis."""
-    if not GROQ_API_KEY:
-        return "AI Roadmap Generator Disabled: GROQ_API_KEY not set."
-    if not job_description.strip(): return "Please paste a job description."
-    if "error" in parsed_json: return "Cannot generate roadmap due to resume parsing errors."
-
-    # Extracting the "Gaps/Areas for Improvement" section from the analysis report
-    gaps_match = re.search(r'Gaps/Areas for Improvement:\s*(.*?)\s*Overall Summary:', fit_analysis_report, re.DOTALL)
-    gaps_text = gaps_match.group(1).strip() if gaps_match else "No specific gaps were identified in the previous analysis, but an ambitious roadmap can still be created."
-    
-    if gaps_text.lower().startswith('- point'):
-        # Clean up bullet points to make them easier for the LLM to process
-        gaps_list = [line.strip('- ').strip() for line in gaps_text.split('\n') if line.strip().startswith('-')]
-        gaps_summary = "\n- ".join(gaps_list)
-    else:
-        gaps_summary = gaps_text
-
-    
-    prompt = f"""
-    Based on the following Job Description (JD) and the identified skill gaps from the resume analysis, create a detailed Skill Roadmap.
-    
-    **Target Job Description:**
-    {job_description}
-    
-    **Identified Skill Gaps (from previous analysis):**
-    {gaps_summary}
-    
-    Generate a roadmap that addresses these gaps, structured into three main components:
-    
-    ### 1. Skill Gaps and Development Goals (Use the identified gaps to define 3-5 specific goals.)
-    
-    ### 2. Detailed Course Plan (Suggest a 4-week structured plan for the top 3 critical skill areas, including specific course/platform suggestions.)
-    
-    * **Goal 1: [Critical Skill Area]**
-        * Week 1: [Specific Topic & Course/Book Suggestion]
-        * Week 2: [Specific Topic & Project/Practice Suggestion]
-        * Week 3: [Specific Topic & Advanced Course/Platform Suggestion]
-        * Week 4: [Project Application & Review]
-    * **Goal 2: [Critical Skill Area]**
-        * ... (similar 4-week breakdown)
-    * **Goal 3: [Critical Skill Area]**
-        * ... (similar 4-week breakdown)
-
-    ### 3. Suggested Certifications (Recommend 2-3 relevant and industry-recognized certifications that close the gaps.)
-    
-    Provide the output strictly in Markdown format, using the exact headers above.
-    """
-
-    response = client.chat.completions.create(
-        model=GROQ_MODEL, 
-        messages=[{"role": "user", "content": prompt}], 
-        temperature=0.5
-    )
-    return response.choices[0].message.content.strip()
 
 def evaluate_interview_answers(qa_list, parsed_json):
     """Evaluates the user's answers against the resume content and provides feedback."""
@@ -1047,7 +963,7 @@ def admin_dashboard():
             uploaded_files = st.file_uploader(
                 "Upload JD file(s)",
                 type=["pdf", "txt", "docx"],
-                accept_multiple_files=(jd_type == "Multiple JD"),
+                accept_multiple_files=(jd_type == "Multiple JD"), # Dynamically set
                 key="jd_file_uploader_admin"
             )
             
@@ -1755,7 +1671,6 @@ def filter_jd_tab_content():
     # --- End Extraction ---
 
     # --- Start Filter Form ---
-    # The filtering logic is now wrapped in a form and executed only upon button click
     with st.form(key="jd_filter_form"):
         st.markdown("### Select Filters")
         
@@ -1789,7 +1704,7 @@ def filter_jd_tab_content():
                 key="filter_role_select"
             )
 
-        # Apply Button (The key element that triggers the logic)
+        # Apply Button
         apply_filters_button = st.form_submit_button("✅ Apply Filters", type="primary", use_container_width=True)
 
     # --- Start Filtering Logic (Inside the if apply_filters_button block) ---
@@ -1842,16 +1757,8 @@ def filter_jd_tab_content():
         
     filtered_jds = st.session_state.filtered_jds_display
     
-    # Only show the result count if the button was clicked, otherwise show total loaded count
-    if apply_filters_button:
-        st.subheader(f"Matching Job Descriptions ({len(filtered_jds)} found)")
-    else:
-        st.subheader(f"Loaded Job Descriptions ({len(st.session_state.candidate_jd_list)} total)")
-        # If the button hasn't been clicked yet, the 'filtered_jds' should contain all loaded JDs
-        if not st.session_state.get('filtered_jds_display'):
-             filtered_jds = st.session_state.candidate_jd_list
-
-
+    st.subheader(f"Matching Job Descriptions ({len(filtered_jds)} found)")
+    
     if filtered_jds:
         display_data = []
         for jd in filtered_jds:
@@ -1875,8 +1782,6 @@ def filter_jd_tab_content():
         st.info("No Job Descriptions match the selected criteria. Try broadening your filter selections.")
     elif st.session_state.candidate_jd_list and not apply_filters_button:
         st.info("Use the filters above and click **'Apply Filters'** to view matching Job Descriptions.")
-        # Fallback to show all JDs if button hasn't been pressed yet and there are JDs loaded
-        # Note: This is now handled implicitly by showing the total count above, but keeping the instruction.
 
 
 def candidate_dashboard():
@@ -2058,58 +1963,34 @@ def candidate_dashboard():
 
     # --- TAB 3: Interview Prep (UNCHANGED) ---
     with tab3:
-    st.header("Interview Preparation Tools")
-    
-    # 🚨 Configuration and State Checks 🚨
-    if not is_resume_parsed or "error" in st.session_state.parsed:
-        st.warning("Please upload and successfully parse a resume first.")
-    elif not GROQ_API_KEY:
-        st.error("Cannot use Interview Prep: GROQ_API_KEY is not configured.")
-    else:
-        # 🎯 Subtab/Mode Selection 🎯
-        
-        # New selection for the two different modes of interview prep
-        prep_mode = st.selectbox(
-            "Select Preparation Mode",
-            ["Based on Resume Content", "Based on Job Description (JD)"],
-            key='prep_mode_selector',
-            on_change=clear_interview_state # Clear state when mode changes
-        )
-        
-        # Determine a safe, short prefix for state keys
-        mode_prefix = "resume" if prep_mode == "Based on Resume Content" else "jd"
-
-        # --- Resume-Based Preparation (Existing Logic) ---
-        if prep_mode == "Based on Resume Content":
+        st.header("Interview Preparation Tools")
+        if not is_resume_parsed or "error" in st.session_state.parsed:
+            st.warning("Please upload and successfully parse a resume first.")
+        elif not GROQ_API_KEY:
+             st.error("Cannot use Interview Prep: GROQ_API_KEY is not configured.")
+        else:
+            if 'iq_output' not in st.session_state: st.session_state.iq_output = ""
+            if 'interview_qa' not in st.session_state: st.session_state.interview_qa = [] 
+            if 'evaluation_report' not in st.session_state: st.session_state.evaluation_report = "" 
             
-            # Initializing state for Resume mode
-            if 'iq_output_resume' not in st.session_state: st.session_state.iq_output_resume = ""
-            if 'interview_qa_resume' not in st.session_state: st.session_state.interview_qa_resume = []
-            if 'evaluation_report_resume' not in st.session_state: st.session_state.evaluation_report_resume = ""
-            
-            # Update generic state pointers for the shared block
-            st.session_state.interview_qa = st.session_state.interview_qa_resume
-            st.session_state.evaluation_report = st.session_state.evaluation_report_resume
-
-            st.subheader("1. Generate Interview Questions (From Resume)")
+            st.subheader("1. Generate Interview Questions")
             
             section_choice = st.selectbox(
-                "Select Section to Focus On", 
-                question_section_options, # Assuming this list is defined elsewhere
-                key='iq_section_c_resume',
-                on_change=clear_interview_state
+                "Select Section", 
+                question_section_options, 
+                key='iq_section_c',
+                on_change=clear_interview_state 
             )
             
-            if st.button("Generate Interview Questions", key='iq_btn_c_resume'):
+            if st.button("Generate Interview Questions", key='iq_btn_c'):
                 with st.spinner("Generating questions..."):
                     try:
                         raw_questions_response = generate_interview_questions(st.session_state.parsed, section_choice)
-                        st.session_state.iq_output_resume = raw_questions_response
+                        st.session_state.iq_output = raw_questions_response
                         
-                        st.session_state.interview_qa_resume = [] 
-                        st.session_state.evaluation_report_resume = "" 
+                        st.session_state.interview_qa = [] 
+                        st.session_state.evaluation_report = "" 
                         
-                        # Parsing logic remains the same (using current_level and q_list)
                         q_list = []
                         current_level = ""
                         for line in raw_questions_response.splitlines():
@@ -2124,150 +2005,58 @@ def candidate_dashboard():
                                     "level": current_level
                                 })
                                 
-                        st.session_state.interview_qa_resume = q_list
+                        st.session_state.interview_qa = q_list
                         
-                        st.success(f"Generated {len(q_list)} questions based on your **{section_choice}** resume section.")
+                        st.success(f"Generated {len(q_list)} questions based on your **{section_choice}** section.")
                         
                     except Exception as e:
                         st.error(f"Error generating questions: {e}")
-                        st.session_state.iq_output_resume = "Error generating questions."
-                        st.session_state.interview_qa_resume = []
+                        st.session_state.iq_output = "Error generating questions."
+                        st.session_state.interview_qa = []
 
-        # --- JD-Based Preparation (New Logic) ---
-        elif prep_mode == "Based on Job Description (JD)":
-            
-            # Initializing state for JD mode
-            if 'jd_text' not in st.session_state: st.session_state.jd_text = ""
-            if 'interview_qa_jd' not in st.session_state: st.session_state.interview_qa_jd = []
-            if 'evaluation_report_jd' not in st.session_state: st.session_state.evaluation_report_jd = ""
-
-            # Update generic state pointers for the shared block
-            st.session_state.interview_qa = st.session_state.interview_qa_jd
-            st.session_state.evaluation_report = st.session_state.evaluation_report_jd
-
-            st.subheader("1. Generate Interview Questions (From JD)")
-
-            # Input for Job Description
-            st.session_state.jd_text = st.text_area(
-                "Paste the full **Job Description (JD)** text here:",
-                value=st.session_state.jd_text,
-                height=300,
-                key='jd_input_area',
-                on_change=clear_interview_state # Clear existing QA when JD changes
-            )
-            
-            if st.button("Generate JD-Specific Questions", key='iq_btn_jd'):
-                if st.session_state.jd_text.strip():
-                    with st.spinner("Generating JD-specific questions..."):
-                        try:
-                            # Assuming you have a function like generate_jd_questions
-                            raw_questions_response = generate_jd_questions(
-                                st.session_state.parsed, 
-                                st.session_state.jd_text
-                            )
-                            # You may also store a 'jd_output' state if needed
-                            
-                            st.session_state.interview_qa_jd = [] 
-                            st.session_state.evaluation_report_jd = "" 
-                            
-                            # Parsing logic (can be reused if the output format is similar)
-                            q_list = []
-                            current_level = "JD Required Skill"
-                            for line in raw_questions_response.splitlines():
-                                line = line.strip()
-                                # Adapt parsing for JD-specific output format if different
-                                if line.startswith('[') and line.endswith(']'):
-                                    current_level = line.strip('[]')
-                                elif line.lower().startswith('q') and ':' in line:
-                                    question_text = line[line.find(':') + 1:].strip()
-                                    q_list.append({
-                                        "question": f"({current_level}) {question_text}",
-                                        "answer": "", 
-                                        "level": current_level
-                                    })
-                                    
-                            st.session_state.interview_qa_jd = q_list
-                            
-                            st.success(f"Generated {len(q_list)} questions matched to the **Job Description**.")
-                            
-                        except Exception as e:
-                            st.error(f"Error generating JD questions: {e}")
-                            st.session_state.interview_qa_jd = []
-                else:
-                    st.error("Please paste a Job Description before generating questions.")
-        
-        # --- Shared Practice and Evaluation Block ---
-        
-        # This block uses the dynamically set st.session_state.interview_qa list
-
-        if st.session_state.get('interview_qa'):
-            st.markdown("---")
-            st.subheader("2. Practice and Record Answers")
-            
-            with st.form("interview_practice_form"):
-                
-                # Use the list that was assigned to st.session_state.interview_qa
-                qa_list = st.session_state.interview_qa
-
-                for i, qa_item in enumerate(qa_list):
-                    st.markdown(f"**Question {i+1}:** {qa_item['question']}")
-                    
-                    # ✅ FIX APPLIED HERE: Use a simple, consistent prefix for unique keys
-                    answer_key = f'answer_q_{mode_prefix}_{i}' 
-                    
-                    answer = st.text_area(
-                        f"Your Answer for Q{i+1}", 
-                        value=qa_list[i]['answer'], 
-                        height=100,
-                        key=answer_key,
-                        label_visibility='collapsed'
-                    )
-                    # Update the correct session state list (qa_list points to the correct *_resume or *_jd list)
-                    qa_list[i]['answer'] = answer
-                    st.markdown("---") 
-                    
-                submit_button = st.form_submit_button("Submit & Evaluate Answers", use_container_width=True)
-
-                if submit_button:
-                    
-                    if all(item['answer'].strip() for item in qa_list):
-                        with st.spinner("Sending answers to AI Evaluator..."):
-                            try:
-                                # The evaluation function needs to be aware of the JD context for JD-based evaluation
-                                report = evaluate_interview_answers(
-                                    qa_list,
-                                    st.session_state.parsed,
-                                    # Pass JD text only if in JD mode
-                                    jd_text=st.session_state.jd_text if prep_mode == "Based on Job Description (JD)" else None
-                                )
-                                
-                                # Update the correct evaluation report state
-                                if prep_mode == "Based on Resume Content":
-                                    st.session_state.evaluation_report_resume = report
-                                else:
-                                    st.session_state.evaluation_report_jd = report
-                                    
-                                st.success("Evaluation complete! See the report below.")
-                            except Exception as e:
-                                st.error(f"Evaluation failed: {e}")
-                                # Use traceback for better debugging of errors
-                                import traceback 
-                                error_report = f"Evaluation failed: {e}\n{traceback.format_exc()}"
-                                if prep_mode == "Based on Resume Content":
-                                    st.session_state.evaluation_report_resume = error_report
-                                else:
-                                    st.session_state.evaluation_report_jd = error_report
-                    else:
-                        st.error("Please answer all generated questions before submitting.")
-                
-            # Display the relevant evaluation report
-            current_report = st.session_state.evaluation_report_resume if prep_mode == "Based on Resume Content" else st.session_state.evaluation_report_jd
-            
-            if current_report:
+            if st.session_state.get('interview_qa'):
                 st.markdown("---")
-                st.subheader("3. AI Evaluation Report")
-                st.markdown(current_report)
+                st.subheader("2. Practice and Record Answers")
                 
+                with st.form("interview_practice_form"):
+                    
+                    for i, qa_item in enumerate(st.session_state.interview_qa):
+                        st.markdown(f"**Question {i+1}:** {qa_item['question']}")
+                        
+                        answer = st.text_area(
+                            f"Your Answer for Q{i+1}", 
+                            value=st.session_state.interview_qa[i]['answer'], 
+                            height=100,
+                            key=f'answer_q_{i}',
+                            label_visibility='collapsed'
+                        )
+                        st.session_state.interview_qa[i]['answer'] = answer 
+                        st.markdown("---") 
+                        
+                    submit_button = st.form_submit_button("Submit & Evaluate Answers", use_container_width=True)
+
+                    if submit_button:
+                        
+                        if all(item['answer'].strip() for item in st.session_state.interview_qa):
+                            with st.spinner("Sending answers to AI Evaluator..."):
+                                try:
+                                    report = evaluate_interview_answers(
+                                        st.session_state.interview_qa,
+                                        st.session_state.parsed
+                                    )
+                                    st.session_state.evaluation_report = report
+                                    st.success("Evaluation complete! See the report below.")
+                                except Exception as e:
+                                    st.error(f"Evaluation failed: {e}")
+                                    st.session_state.evaluation_report = f"Evaluation failed: {e}\n{traceback.format_exc()}"
+                        else:
+                            st.error("Please answer all generated questions before submitting.")
+                
+                if st.session_state.get('evaluation_report'):
+                    st.markdown("---")
+                    st.subheader("3. AI Evaluation Report")
+                    st.markdown(st.session_state.evaluation_report)
+
     # --- TAB 4: JD Management (Candidate) ---
     with tab4:
         st.header("📚 Manage Job Descriptions for Matching")
@@ -2338,7 +2127,7 @@ def candidate_dashboard():
             uploaded_files = st.file_uploader(
                 "Upload JD file(s)",
                 type=["pdf", "txt", "docx"],
-                accept_multiple_files=(jd_type == "Multiple JD"),
+                accept_multiple_files=(jd_type == "Multiple JD"), # Dynamically set
                 key="jd_file_uploader_candidate"
             )
             if st.button("Add JD(s) from File", key="add_jd_file_btn_candidate"):
@@ -2416,8 +2205,6 @@ def candidate_dashboard():
         else:
             if "candidate_match_results" not in st.session_state:
                 st.session_state.candidate_match_results = []
-            if "roadmap_output" not in st.session_state:
-                st.session_state.roadmap_output = {}
 
             # 1. Get all available JD names
             all_jd_names = [item['name'] for item in st.session_state.candidate_jd_list]
@@ -2438,7 +2225,6 @@ def candidate_dashboard():
             
             if st.button(f"Run Match Analysis on {len(jds_to_match)} Selected JD(s)"):
                 st.session_state.candidate_match_results = []
-                st.session_state.roadmap_output = {} # Clear roadmap on new match analysis
                 
                 if not jds_to_match:
                     st.warning("Please select at least one Job Description to run the analysis.")
@@ -2481,7 +2267,6 @@ def candidate_dashboard():
 
                                 results_with_score.append({
                                     "jd_name": jd_name,
-                                    "jd_content": jd_content, # Store JD content for roadmap generation
                                     "overall_score": overall_score,
                                     "numeric_score": int(overall_score) if overall_score.isdigit() else -1, # Added for sorting/ranking
                                     "skills_percent": skills_percent,
@@ -2492,7 +2277,6 @@ def candidate_dashboard():
                             except Exception as e:
                                 results_with_score.append({
                                     "jd_name": jd_name,
-                                    "jd_content": jd_content,
                                     "overall_score": "Error",
                                     "numeric_score": -1, # Set a low score for errors
                                     "skills_percent": "Error",
@@ -2530,11 +2314,11 @@ def candidate_dashboard():
                 results_df = st.session_state.candidate_match_results
                 
                 display_data = []
-                # Use a dictionary to map JD names to their full item for metadata retrieval
-                jd_map = {item['name']: item for item in st.session_state.candidate_jd_list}
-                
                 for item in results_df:
-                    full_jd_item = jd_map.get(item["jd_name"], {})
+                    # Also include extracted JD metadata for a richer view
+                    
+                    # Find the full JD item to get the metadata
+                    full_jd_item = next((jd for jd in st.session_state.candidate_jd_list if jd['name'] == item['jd_name']), {})
                     
                     display_data.append({
                         # 🚨 ADDED RANK COLUMN
@@ -2557,50 +2341,6 @@ def candidate_dashboard():
                     header_text = f"{rank_display}Report for **{item['jd_name'].replace('--- Simulated JD for: ', '')}** (Score: **{item['overall_score']}/10** | S: **{item.get('skills_percent', 'N/A')}%** | E: **{item.get('experience_percent', 'N/A')}%** | Edu: **{item.get('education_percent', 'N/A')}%**)"
                     with st.expander(header_text):
                         st.markdown(item['full_analysis'])
-                
-                st.markdown("---")
-                
-                # --- 4. Skill Roadmap Generator (NEW SECTION) ---
-                st.subheader("4. Generate Skill Roadmap for a Specific JD")
-                st.info("Select a matched JD to generate a detailed plan to bridge the identified skill gaps.")
-                
-                # Create options from current match results
-                roadmap_jd_options = {
-                    f"Rank {item['rank']} - {item['jd_name'].replace('--- Simulated JD for: ', '')} (Score: {item['overall_score']}/10)": item
-                    for item in results_df if item['overall_score'].isdigit() or item['overall_score'] == 'N/A'
-                }
-                
-                selected_roadmap_key = st.selectbox(
-                    "Select Matched JD for Roadmap Generation",
-                    options=list(roadmap_jd_options.keys()),
-                    key="roadmap_jd_select"
-                )
-                
-                if selected_roadmap_key:
-                    selected_match_item = roadmap_jd_options[selected_roadmap_key]
-                    
-                    if st.button(f"Generate Roadmap for {selected_match_item['jd_name'].replace('--- Simulated JD for: ', '')}", key="generate_roadmap_btn"):
-                        
-                        with st.spinner(f"Generating detailed skill roadmap for {selected_match_item['jd_name']}..."):
-                            try:
-                                roadmap = generate_skill_roadmap(
-                                    job_description=selected_match_item['jd_content'],
-                                    parsed_json=st.session_state.parsed,
-                                    fit_analysis_report=selected_match_item['full_analysis']
-                                )
-                                # Store the result in session state tied to the JD name
-                                st.session_state.roadmap_output[selected_match_item['jd_name']] = roadmap
-                                st.success(f"Roadmap generated for {selected_match_item['jd_name']}!")
-                            except Exception as e:
-                                st.error(f"Failed to generate roadmap: {e}")
-                                st.session_state.roadmap_output[selected_match_item['jd_name']] = f"Error generating roadmap: {e}"
-
-                    # Display the generated roadmap if available
-                    if selected_match_item['jd_name'] in st.session_state.roadmap_output:
-                        st.markdown("---")
-                        st.subheader(f"Skill Roadmap for {selected_match_item['jd_name'].replace('--- Simulated JD for: ', '')}")
-                        st.markdown(st.session_state.roadmap_output[selected_match_item['jd_name']])
-
 
     # --- TAB 6: Filter JD (NEW) ---
     with tab6:
@@ -2650,9 +2390,6 @@ def main():
     # NOTE: These JD items now store content, name, role, job_type, and key_skills
     if 'candidate_jd_list' not in st.session_state: st.session_state.candidate_jd_list = []
     if 'candidate_match_results' not in st.session_state: st.session_state.candidate_match_results = []
-    # NEW: Skill Roadmap Output
-    if 'roadmap_output' not in st.session_state: st.session_state.roadmap_output = {}
-
     
     # Resume Parsing Upload State
     if 'candidate_uploaded_resumes' not in st.session_state: st.session_state.candidate_uploaded_resumes = []
