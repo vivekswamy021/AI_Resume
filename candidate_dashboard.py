@@ -5,22 +5,46 @@ import traceback
 import tempfile
 import os
 from datetime import date
+from openai import OpenAI # Assuming OpenAI is used for the robust chatbot
 
 # Define the main function for the Candidate Dashboard
 # It takes necessary utility functions from app.py as arguments
 def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_interview_answers, generate_interview_questions, question_section_options, extract_jd_metadata, get_file_type, extract_content, extract_jd_from_linkedin_url, clear_interview_state, evaluate_jd_fit, DEFAULT_JOB_TYPES, DEFAULT_ROLES, qa_on_jd=None):
     
-    # --- PLACEHOLDER FUNCTION FOR JD CHATBOT ---
-    # NOTE: You will need to implement the actual logic for this function 
-    # in app.py or a utility file and pass it here, similar to qa_on_resume.
-    # For now, this placeholder simulates the interaction.
+    # --- HELPER FUNCTIONS FOR ROBUST JD CHATBOT ---
+    
+    @st.cache_resource
+    def get_openai_client():
+        """Initializes and returns the OpenAI client, safely handling API key."""
+        try:
+            # Assumes API key is stored in .streamlit/secrets.toml
+            api_key = st.secrets["openai_api_key"]
+        except KeyError:
+            # Handle if the key is not configured
+            st.error("OpenAI API key not found in Streamlit secrets. The JD Chatbot will not function.")
+            return None
+        return OpenAI(api_key=api_key)
+
+    def generate_jd_response(client, messages):
+        """Generates a streaming response from the LLM based on conversation history."""
+        if client is None:
+            return "Error: LLM client not initialized."
+
+        # Use st.write_stream for a dynamic, real-time response experience
+        with st.chat_message("assistant"):
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",  # Use a suitable model
+                messages=messages,
+                stream=True
+            )
+            full_response = st.write_stream(response)
+            return full_response
+            
     def jd_qa_on_resume_placeholder(question, jd_text, parsed_json):
-        """Simulates a chatbot answer based on JD requirements and resume content."""
+        """Simulates a chatbot answer based on JD requirements and resume content (Only used as fallback)."""
+        # This function is now mainly replaced by the robust chat logic, but kept for function signature consistency if needed elsewhere.
         if not jd_text.strip():
             return "Please select a Job Description above to start the conversation about your fit for the role."
-        
-        # In a real app, this would call an LLM function:
-        # result = llm_jd_qa(question, jd_text, parsed_json) 
         
         if "error" in parsed_json:
              return f"Cannot answer: Resume parsing errors were detected. Error: {parsed_json['error']}"
@@ -30,9 +54,9 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
             f"Based on the Job Description and your resume (mentioning: {parsed_json.get('skills', ['...'])[:3]}), "
             f"your query '{question}' is highly relevant. "
             f"The system recommends focusing on your experience with related skills mentioned in the JD. "
-            f"(Actual answer generation would happen via LLM integration.)"
+            f"(Use the robust JD Chatbot tab for real LLM interaction.)"
         )
-    # ---------------------------------------------
+    # -------------------------------------------------------------
     
     # --- Helper functions that interact with session state or use utils ---
     
@@ -656,32 +680,36 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                     st.text_area("Answer", st.session_state.qa_answer, height=150, key="resume_qa_answer_display")
                     
         with subtab_jd_chatbot:
-            st.markdown("### Ask the AI how your resume fits a specific Job Description.")
+            st.header("Ask the AI Recruiter about the Job Description")
             
-            if not is_resume_parsed:
-                st.warning("Please upload and parse a resume in the 'Resume Parsing' tab first.")
-            elif "error" in st.session_state.parsed:
-                 st.error("Cannot use Chatbot: Resume data has parsing errors.")
-            elif not st.session_state.get('candidate_jd_list'):
-                 st.error("Please add Job Descriptions in the 'JD Management' tab (Tab 4) before using this chatbot.")
+            if not st.session_state.get('candidate_jd_list'):
+                 st.error("Please **add Job Descriptions** in the 'JD Management' tab (Tab 4) before using this chatbot.")
             else:
-                if 'jd_qa_answer' not in st.session_state: st.session_state.jd_qa_answer = ""
-
-                # --- UPDATED JD SELECTION BLOCK ---
-                st.markdown("#### 1. Select Uploaded Job Description (JD)")
+                # --- ROBUST JD CHATBOT LOGIC START ---
+                client = get_openai_client()
                 
-                # Create a list of JD names for the selectbox
+                # 1. JD Selection
+                st.markdown("#### 1. Select Job Description (JD) for Context")
+                
                 jd_options = [jd['name'] for jd in st.session_state.candidate_jd_list]
                 
+                # Use a specific session state key for the selector to control chat reset
+                selector_key = "jd_chatbot_selector"
+                
                 selected_jd_name = st.selectbox(
-                    "Choose a Job Description to analyze your resume against:",
+                    "Choose a JD to analyze:",
                     options=["-- Select a JD --"] + jd_options,
-                    key="jd_chatbot_selector"
+                    key=selector_key
                 )
 
                 jd_text = ""
                 
-                # Find the corresponding content for the selected JD
+                # Check if the JD selection changed to reset chat history
+                if st.session_state.get('last_selected_jd') != selected_jd_name:
+                    st.session_state['jd_chatbot_messages'] = []
+                    st.session_state['last_selected_jd'] = selected_jd_name
+                    
+                
                 if selected_jd_name and selected_jd_name != "-- Select a JD --":
                     selected_jd_data = next(
                         (item for item in st.session_state.candidate_jd_list if item['name'] == selected_jd_name),
@@ -689,45 +717,59 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                     )
                     jd_text = selected_jd_data.get('content', '')
                     
-                    st.info(f"Selected JD: **{selected_jd_name}**")
-                    # Optionally show the JD content in a small text area for verification
+                    st.info(f"Context Loaded: **{selected_jd_name}**")
                     with st.expander("View JD Content"):
                         st.text(jd_text)
+                
+                # 2. Chat Initialization (History Management)
+                if selected_jd_name == "-- Select a JD --" or not jd_text:
+                    st.warning("Please select a Job Description above to start the conversation.")
+                    
+                elif client: # Proceed only if client is initialized
+                    
+                    # Initialize chat history if empty or if JD text changed
+                    if not st.session_state.get('jd_chatbot_messages') or st.session_state.jd_chatbot_messages[0].get('content') != jd_text:
+                        system_prompt = (
+                            "You are a helpful and experienced technical recruiter. "
+                            "Your task is to analyze the provided Job Description (JD) and answer "
+                            "questions from a job candidate. Use the JD content exclusively as your "
+                            "knowledge source. Do not invent details. Keep your answers concise and "
+                            "directly relevant to the JD content. "
+                            f"\n\n--- Job Description Context ---\n{jd_text}\n---"
+                        )
+                        st.session_state["jd_chatbot_messages"] = [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "assistant", "content": f"I am ready to analyze the JD for **{selected_jd_name}**. What questions do you have about this role?"}
+                        ]
+                        
+                    st.markdown("#### 2. Chat with the AI Recruiter")
+                    
+                    # Display existing messages
+                    # Start loop from 1 to skip the invisible 'system' message
+                    for message in st.session_state["jd_chatbot_messages"][1:]: 
+                        with st.chat_message(message["role"]):
+                            st.markdown(message["content"])
 
-                # --- END OF UPDATED JD SELECTION BLOCK ---
-                
-                st.markdown("#### 2. Ask a Question based on the JD")
-                
-                # Question input
-                jd_question = st.text_input(
-                    "Your Question about JD match", 
-                    placeholder="e.g., How does my experience match the 'Python' requirement?", 
-                    key="jd_qa_question"
-                )
-                
-                if st.button("Get JD Match Answer", key="jd_qa_btn"):
-                    if not jd_text.strip():
-                        st.error("Please select a valid Job Description first.")
-                    elif not jd_question.strip():
-                        st.error("Please enter a question.")
-                    else:
-                        with st.spinner("Analyzing JD and Resume to generate answer..."):
-                            try:
-                                # This calls the placeholder function using the selected JD content
-                                answer = jd_qa_on_resume_placeholder(
-                                    jd_question, 
-                                    jd_text, 
-                                    st.session_state.parsed
-                                )
-                                st.session_state.jd_qa_answer = answer
-                            except Exception as e:
-                                st.error(f"Error during JD Q&A: {e}")
-                                st.session_state.jd_qa_answer = "Could not generate an answer due to an error."
-                                
+                    # Handle user input
+                    if prompt := st.chat_input("Ask a question about this Job Description..."):
+                        
+                        # Add user message to history and display
+                        st.session_state["jd_chatbot_messages"].append({"role": "user", "content": prompt})
+                        with st.chat_message("user"):
+                            st.markdown(prompt)
 
-                if st.session_state.get('jd_qa_answer'):
-                    st.markdown("#### AI Match Insight")
-                    st.info(st.session_state.jd_qa_answer)
+                        # Generate and Display Assistant Response (Streaming)
+                        full_response_text = generate_jd_response(
+                            client, 
+                            st.session_state["jd_chatbot_messages"]
+                        )
+
+                        # Add Assistant Response to history
+                        st.session_state["jd_chatbot_messages"].append(
+                            {"role": "assistant", "content": full_response_text}
+                        )
+                        
+                # --- ROBUST JD CHATBOT LOGIC END ---
                     
         # --- END OF SUBTABS ---
 
@@ -940,6 +982,9 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                     st.session_state.candidate_jd_list = []
                     st.session_state.candidate_match_results = [] 
                     st.session_state.filtered_jds_display = [] 
+                    # Also clear JD Chatbot state to prevent errors on next tab access
+                    st.session_state['jd_chatbot_messages'] = []
+                    st.session_state['last_selected_jd'] = "-- Select a JD --"
                     st.success("All JDs and associated match results have been cleared.")
                     st.rerun() 
 
