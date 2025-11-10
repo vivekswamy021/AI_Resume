@@ -7,8 +7,10 @@ import os
 from datetime import date
 
 # Define the main function for the Candidate Dashboard
-# NOTE: The function signature must include ALL required arguments:
-# generate_skill_roadmap, DEFAULT_JOB_TYPES, and DEFAULT_ROLES.
+# FIX: DEFAULT_JOB_TYPES and DEFAULT_ROLES must be defined before any keyword-collecting
+# argument (like **kwargs or a misspelled one) and before any optional/default arguments 
+# like qa_on_jd=None, or simply placed before the optional argument.
+
 def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_interview_answers, generate_interview_questions, question_section_options, extract_jd_metadata, get_file_type, extract_content, extract_jd_from_linkedin_url, clear_interview_state, evaluate_jd_fit, generate_skill_roadmap, DEFAULT_JOB_TYPES, DEFAULT_ROLES, qa_on_jd=None):
     
     # --- HELPER FUNCTIONS (Placeholder function for removed JD Chatbot) ---
@@ -112,7 +114,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
         
         if contact_info:
             md += f"| {' | '.join(contact_info)} |\n"
-            md += "| " + " | ".join(["---"] * len(contact_info)) + " |\n\n"
+            md += "| " + " | ".join(["---"] * len(contact_info) if len(contact_info) > 0 else ["---"]) + " |\n\n"
         
         section_order = ['personal_details', 'experience', 'projects', 'education', 'certifications', 'skills', 'strength']
         
@@ -163,19 +165,19 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
             with col1:
                 st.session_state.cv_form_data['name'] = st.text_input(
                     "Full Name", 
-                    value=st.session_state.cv_form_data['name'], 
+                    value=st.session_state.cv_form_data.get('name', default_parsed['name']), 
                     key="cv_name"
                 )
             with col2:
                 st.session_state.cv_form_data['email'] = st.text_input(
                     "Email Address", 
-                    value=st.session_state.cv_form_data['email'], 
+                    value=st.session_state.cv_form_data.get('email', default_parsed['email']), 
                     key="cv_email"
                 )
             with col3:
                 st.session_state.cv_form_data['phone'] = st.text_input(
                     "Phone Number", 
-                    value=st.session_state.cv_form_data['phone'], 
+                    value=st.session_state.cv_form_data.get('phone', default_parsed['phone']), 
                     key="cv_phone"
                 )
             
@@ -183,13 +185,13 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
             with col4:
                 st.session_state.cv_form_data['linkedin'] = st.text_input(
                     "LinkedIn Profile URL", 
-                    value=st.session_state.cv_form_data.get('linkedin', ''), 
+                    value=st.session_state.cv_form_data.get('linkedin', default_parsed['linkedin']), 
                     key="cv_linkedin"
                 )
             with col5:
                 st.session_state.cv_form_data['github'] = st.text_input(
                     "GitHub Profile URL", 
-                    value=st.session_state.cv_form_data.get('github', ''), 
+                    value=st.session_state.cv_form_data.get('github', default_parsed['github']), 
                     key="cv_github"
                 )
             
@@ -197,7 +199,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
             st.subheader("Summary / Personal Details")
             st.session_state.cv_form_data['personal_details'] = st.text_area(
                 "Professional Summary or Personal Details", 
-                value=st.session_state.cv_form_data.get('personal_details', ''), 
+                value=st.session_state.cv_form_data.get('personal_details', default_parsed['personal_details']), 
                 height=100,
                 key="cv_personal_details"
             )
@@ -205,7 +207,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
             st.markdown("---")
             st.subheader("Technical Sections (One Item per Line)")
 
-            skills_text = "\n".join(st.session_state.cv_form_data.get('skills', []))
+            skills_text = "\n".join(st.session_state.cv_form_data.get('skills', default_parsed['skills']))
             new_skills_text = st.text_area(
                 "Key Skills (Technical and Soft)", 
                 value=skills_text,
@@ -214,7 +216,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
             )
             st.session_state.cv_form_data['skills'] = [s.strip() for s in new_skills_text.split('\n') if s.strip()]
             
-            experience_text = "\n".join(st.session_state.cv_form_data.get('experience', []))
+            experience_text = "\n".join(st.session_state.cv_form_data.get('experience', default_parsed['experience']))
             new_experience_text = st.text_area(
                 "Professional Experience (Job Roles, Companies, Dates, Key Responsibilities)", 
                 value=experience_text,
@@ -223,7 +225,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
             )
             st.session_state.cv_form_data['experience'] = [e.strip() for e in new_experience_text.split('\n') if e.strip()]
 
-            education_text = "\n".join(st.session_state.cv_form_data.get('education', []))
+            education_text = "\n".join(st.session_state.cv_form_data.get('education', default_parsed['education']))
             new_education_text = st.text_area(
                 "Education (Degrees, Institutions, Dates)", 
                 value=education_text,
@@ -232,7 +234,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
             )
             st.session_state.cv_form_data['education'] = [d.strip() for d in new_education_text.split('\n') if d.strip()]
             
-            certifications_text = "\n".join(st.session_state.cv_form_data.get('certifications', []))
+            certifications_text = "\n".join(st.session_state.cv_form_data.get('certifications', default_parsed['certifications']))
             new_certifications_text = st.text_area(
                 "Certifications (Name, Issuing Body, Date)", 
                 value=certifications_text,
@@ -241,7 +243,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
             )
             st.session_state.cv_form_data['certifications'] = [c.strip() for c in new_certifications_text.split('\n') if c.strip()]
             
-            projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []))
+            projects_text = "\n".join(st.session_state.cv_form_data.get('projects', default_parsed['projects']))
             new_projects_text = st.text_area(
                 "Projects (Name, Description, Technologies)", 
                 value=projects_text,
@@ -250,7 +252,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
             )
             st.session_state.cv_form_data['projects'] = [p.strip() for p in new_projects_text.split('\n') if p.strip()]
             
-            strength_text = "\n".join(st.session_state.cv_form_data.get('strength', []))
+            strength_text = "\n".join(st.session_state.cv_form_data.get('strength', default_parsed['strength']))
             new_strength_text = st.text_area(
                 "Strengths / Key Personal Qualities (One per line)", 
                 value=strength_text,
@@ -285,7 +287,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
             st.session_state.evaluation_report = ""
             st.session_state.jd_interview_qa = [] 
             st.session_state.jd_evaluation_report = "" 
-            st.session_state.skill_roadmap_report = "" # Clear roadmap state
+            st.session_state.skill_roadmap_report = "" 
             st.session_state.selected_roadmap_jd_name = "" 
 
             st.success(f"✅ CV data for **{st.session_state.parsed['name']}** successfully generated and loaded! You can now use the Chatbot, Match, and Interview Prep tabs.")
@@ -507,13 +509,13 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
 
     is_resume_parsed = bool(st.session_state.get('parsed', {}).get('name')) or bool(st.session_state.get('full_text'))
     
-    # Updated Tab List to include the new tab_roadmap
+    # Updated Tab List
     tab_cv_mgmt, tab1, tab_resume_qa, tab_interview_prep, tab_roadmap, tab4, tab5, tab6 = st.tabs([
         "✍️ CV Management", 
         "📄 Resume Parsing", 
         "💬 Resume Chatbot (Q&A)", 
         "❓ Interview Prep", 
-        "🗺️ Skill Roadmap", # New Tab Title
+        "🗺️ Skill Roadmap", 
         "📚 JD Management", 
         "🎯 Batch JD Match",
         "🔍 Filter JD"
@@ -556,15 +558,9 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
             )
             st.markdown("---")
 
-
-            if uploaded_file is not None:
-                st.session_state.candidate_uploaded_resumes = [uploaded_file] 
+            st.session_state.candidate_uploaded_resumes = [uploaded_file] if uploaded_file else []
+            if uploaded_file is None:
                 st.session_state.pasted_cv_text = ""
-            elif st.session_state.candidate_uploaded_resumes and uploaded_file is None:
-                st.session_state.candidate_uploaded_resumes = []
-                st.session_state.parsed = {}
-                st.session_state.full_text = ""
-                st.toast("Upload cleared.")
             
             file_to_parse = st.session_state.candidate_uploaded_resumes[0] if st.session_state.candidate_uploaded_resumes else None
             
@@ -583,14 +579,14 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                             clear_interview_state()
                             st.session_state.jd_interview_qa = [] 
                             st.session_state.jd_evaluation_report = "" 
-                            st.session_state.skill_roadmap_report = "" # Clear roadmap state
+                            st.session_state.skill_roadmap_report = "" 
                             st.session_state.selected_roadmap_jd_name = "" 
 
                             st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
                             st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
                         else:
                             st.error(f"Parsing failed for {file_to_parse.name}: {result['error']}")
-                            st.session_state.parsed = {"error": result['error'], "name": result['name']}
+                            st.session_state.parsed = {"error": result['error'], "name": result.get('name', 'N/A')}
                             st.session_state.full_text = result['full_text'] or ""
             else:
                 st.info("No resume file is currently uploaded. Please upload a file above.")
@@ -625,14 +621,14 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                             clear_interview_state()
                             st.session_state.jd_interview_qa = [] 
                             st.session_state.jd_evaluation_report = "" 
-                            st.session_state.skill_roadmap_report = "" # Clear roadmap state
+                            st.session_state.skill_roadmap_report = "" 
                             st.session_state.selected_roadmap_jd_name = "" 
 
                             st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
                             st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
                         else:
                             st.error(f"Parsing failed: {result['error']}")
-                            st.session_state.parsed = {"error": result['error'], "name": result['name']}
+                            st.session_state.parsed = {"error": result['error'], "name": result.get('name', 'N/A')}
                             st.session_state.full_text = result['full_text'] or ""
             else:
                 st.info("Please paste your CV text into the box above.")
@@ -640,7 +636,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
 
     # --- TAB 2: Resume Chatbot (Q&A) ---
     with tab_resume_qa:
-        st.header("Resume Chatbot (Q&A)") # Simplified header
+        st.header("Resume Chatbot (Q&A)") 
         
         st.markdown("### Ask any question about the currently loaded resume.")
         if not is_resume_parsed:
@@ -980,7 +976,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                             jd_text = extract_jd_from_linkedin_url(url)
                             metadata = extract_jd_metadata(jd_text)
                         
-                        name_base = url.split('/jobs/view/')[-1].split('/')[0] if '/jobs/view/' in url else f"URL {count+1}"
+                        name_base = url.split('/jobs/view/')[-1].split('/')[0] if '/jobs/view/' in url else f"URL {len(st.session_state.candidate_jd_list) + 1}"
                         name = f"JD from URL: {name_base}" 
                         if name in [item['name'] for item in st.session_state.candidate_jd_list]:
                             name = f"JD from URL: {name_base} ({len(st.session_state.candidate_jd_list) + 1})" 
@@ -1067,7 +1063,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                     st.session_state.filtered_jds_display = [] 
                     st.session_state.jd_interview_qa = [] 
                     st.session_state.jd_evaluation_report = "" 
-                    st.session_state.skill_roadmap_report = "" # Clear roadmap state
+                    st.session_state.skill_roadmap_report = "" 
                     st.session_state.selected_roadmap_jd_name = "" 
                     st.success("All JDs and associated data have been cleared.")
                     st.rerun() 
