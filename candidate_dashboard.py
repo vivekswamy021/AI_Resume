@@ -6,11 +6,13 @@
 import streamlit as st
 import json
 import re
+# Import everything needed from app_utils
 from app_utils import (
     go_to, clear_interview_state, question_section_options, DEFAULT_JOB_TYPES, DEFAULT_ROLES,
     parse_and_store_resume, qa_on_resume, generate_interview_questions, 
     evaluate_interview_answers, evaluate_jd_fit, extract_jd_from_linkedin_url, 
-    extract_jd_metadata, generate_cv_html, format_parsed_json_to_markdown
+    extract_jd_metadata, generate_cv_html, format_parsed_json_to_markdown,
+    tempfile, os, get_file_type, extract_content
 )
 
 
@@ -616,13 +618,11 @@ def candidate_dashboard():
                 count = 0
                 for file in files_to_process:
                     if file:
-                        import tempfile, os # Imported here for the utility functions
                         temp_dir = tempfile.mkdtemp()
                         temp_path = os.path.join(temp_dir, file.name)
                         with open(temp_path, "wb") as f:
                             f.write(file.getbuffer())
                             
-                        from app_utils import get_file_type, extract_content # Imported here
                         file_type = get_file_type(temp_path)
                         jd_text = extract_content(file_type, temp_path)
                         
