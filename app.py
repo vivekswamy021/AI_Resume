@@ -2075,6 +2075,9 @@ def candidate_dashboard():
             key='prep_mode_selector',
             on_change=clear_interview_state # Clear state when mode changes
         )
+        
+        # Determine a safe, short prefix for state keys
+        mode_prefix = "resume" if prep_mode == "Based on Resume Content" else "jd"
 
         # --- Resume-Based Preparation (Existing Logic) ---
         if prep_mode == "Based on Resume Content":
@@ -2084,8 +2087,7 @@ def candidate_dashboard():
             if 'interview_qa_resume' not in st.session_state: st.session_state.interview_qa_resume = []
             if 'evaluation_report_resume' not in st.session_state: st.session_state.evaluation_report_resume = ""
             
-            # Use specific state keys for this mode
-            st.session_state.iq_output = st.session_state.iq_output_resume
+            # Update generic state pointers for the shared block
             st.session_state.interview_qa = st.session_state.interview_qa_resume
             st.session_state.evaluation_report = st.session_state.evaluation_report_resume
 
@@ -2131,10 +2133,6 @@ def candidate_dashboard():
                         st.session_state.iq_output_resume = "Error generating questions."
                         st.session_state.interview_qa_resume = []
 
-            # Update session state for the rest of the tab
-            st.session_state.interview_qa = st.session_state.interview_qa_resume
-            st.session_state.evaluation_report = st.session_state.evaluation_report_resume
-
         # --- JD-Based Preparation (New Logic) ---
         elif prep_mode == "Based on Job Description (JD)":
             
@@ -2143,7 +2141,7 @@ def candidate_dashboard():
             if 'interview_qa_jd' not in st.session_state: st.session_state.interview_qa_jd = []
             if 'evaluation_report_jd' not in st.session_state: st.session_state.evaluation_report_jd = ""
 
-            # Use specific state keys for this mode
+            # Update generic state pointers for the shared block
             st.session_state.interview_qa = st.session_state.interview_qa_jd
             st.session_state.evaluation_report = st.session_state.evaluation_report_jd
 
@@ -2200,8 +2198,7 @@ def candidate_dashboard():
         
         # --- Shared Practice and Evaluation Block ---
         
-        # This block now uses st.session_state.interview_qa and st.session_state.evaluation_report 
-        # which were dynamically set based on the prep_mode selected above.
+        # This block uses the dynamically set st.session_state.interview_qa list
 
         if st.session_state.get('interview_qa'):
             st.markdown("---")
@@ -2209,14 +2206,14 @@ def candidate_dashboard():
             
             with st.form("interview_practice_form"):
                 
-                # Check which session state list to iterate over
-                qa_list = st.session_state.interview_qa_resume if prep_mode == "Based on Resume Content" else st.session_state.interview_qa_jd
+                # Use the list that was assigned to st.session_state.interview_qa
+                qa_list = st.session_state.interview_qa
 
                 for i, qa_item in enumerate(qa_list):
                     st.markdown(f"**Question {i+1}:** {qa_item['question']}")
                     
-                    # Ensure the correct state key is updated
-                    answer_key = f'answer_q_{prep_mode.split()[2].lower()}_{i}' # e.g., 'answer_q_resume_0' or 'answer_q_jd_0'
+                    # ✅ FIX APPLIED HERE: Use a simple, consistent prefix for unique keys
+                    answer_key = f'answer_q_{mode_prefix}_{i}' 
                     
                     answer = st.text_area(
                         f"Your Answer for Q{i+1}", 
@@ -2225,7 +2222,7 @@ def candidate_dashboard():
                         key=answer_key,
                         label_visibility='collapsed'
                     )
-                    # Update the correct session state list
+                    # Update the correct session state list (qa_list points to the correct *_resume or *_jd list)
                     qa_list[i]['answer'] = answer
                     st.markdown("---") 
                     
@@ -2240,6 +2237,7 @@ def candidate_dashboard():
                                 report = evaluate_interview_answers(
                                     qa_list,
                                     st.session_state.parsed,
+                                    # Pass JD text only if in JD mode
                                     jd_text=st.session_state.jd_text if prep_mode == "Based on Job Description (JD)" else None
                                 )
                                 
@@ -2252,6 +2250,8 @@ def candidate_dashboard():
                                 st.success("Evaluation complete! See the report below.")
                             except Exception as e:
                                 st.error(f"Evaluation failed: {e}")
+                                # Use traceback for better debugging of errors
+                                import traceback 
                                 error_report = f"Evaluation failed: {e}\n{traceback.format_exc()}"
                                 if prep_mode == "Based on Resume Content":
                                     st.session_state.evaluation_report_resume = error_report
@@ -2267,7 +2267,7 @@ def candidate_dashboard():
                 st.markdown("---")
                 st.subheader("3. AI Evaluation Report")
                 st.markdown(current_report)
-
+                
     # --- TAB 4: JD Management (Candidate) ---
     with tab4:
         st.header("📚 Manage Job Descriptions for Matching")
