@@ -748,6 +748,10 @@ def update_resume_status(resume_name, new_status, applied_jd, submitted_date, re
     """
     Callback function to update the status and metadata of a specific resume.
     """
+    # Defensive check: Ensure keys exist before setting them
+    if "resume_statuses" not in st.session_state: st.session_state.resume_statuses = {}
+    if "resumes_to_analyze" not in st.session_state: st.session_state.resumes_to_analyze = []
+
     st.session_state.resume_statuses[resume_name] = new_status
     
     if 0 <= resume_list_index < len(st.session_state.resumes_to_analyze):
@@ -861,6 +865,7 @@ def vendor_approval_tab_content():
     st.header("🤝 Vendor Approval") 
     
     st.markdown("### 1. Add New Vendor")
+    # Defensive Initialization (though main() does this, better safe)
     if "vendors" not in st.session_state:
         st.session_state.vendors = []
     if "vendor_statuses" not in st.session_state:
@@ -968,7 +973,7 @@ def admin_dashboard():
             go_to("login") 
     # --- END NAVIGATION BLOCK ---
     
-    # Initialize Admin session state variables (Defensive check)
+    # Initialize Admin session state variables (Defensive check - main() also does this)
     if "admin_jd_list" not in st.session_state: st.session_state.admin_jd_list = []
     if "resumes_to_analyze" not in st.session_state: st.session_state.resumes_to_analyze = []
     if "admin_match_results" not in st.session_state: st.session_state.admin_match_results = []
@@ -1441,12 +1446,13 @@ def cv_management_tab_content():
     }
     
     # Use a specific session state key for form data, initializing from parsed if available
-    if "cv_form_data" not in st.session_state:
-        # Load existing parsed data or default if the tab is opened for the first time
-        if st.session_state.get('parsed', {}).get('name'):
-            st.session_state.cv_form_data = st.session_state.parsed.copy()
-        else:
-            st.session_state.cv_form_data = default_parsed
+    # CRITICAL FIX: Ensure 'cv_form_data' is accessed defensively, relying on initialization in main()
+    if st.session_state.get('parsed', {}).get('name') and not st.session_state.cv_form_data.get('name'):
+        # If a resume was just parsed and the form hasn't been loaded/edited, pre-fill it.
+        st.session_state.cv_form_data = st.session_state.parsed.copy()
+    elif 'cv_form_data' not in st.session_state:
+        # Fallback in case of an unexpected state (though main() should catch this)
+        st.session_state.cv_form_data = default_parsed
     
     # --- CV Builder Form ---
     with st.form("cv_builder_form"):
@@ -1457,19 +1463,20 @@ def cv_management_tab_content():
         with col1:
             st.session_state.cv_form_data['name'] = st.text_input(
                 "Full Name", 
-                value=st.session_state.cv_form_data['name'], 
+                # Defensive lookup, but key is guaranteed to exist by the logic above
+                value=st.session_state.cv_form_data.get('name', ''), 
                 key="cv_name"
             )
         with col2:
             st.session_state.cv_form_data['email'] = st.text_input(
                 "Email Address", 
-                value=st.session_state.cv_form_data['email'], 
+                value=st.session_state.cv_form_data.get('email', ''), 
                 key="cv_email"
             )
         with col3:
             st.session_state.cv_form_data['phone'] = st.text_input(
                 "Phone Number", 
-                value=st.session_state.cv_form_data['phone'], 
+                value=st.session_state.cv_form_data.get('phone', ''), 
                 key="cv_phone"
             )
         
@@ -1566,7 +1573,7 @@ def cv_management_tab_content():
 
     if submit_form_button:
         # 1. Basic validation
-        if not st.session_state.cv_form_data['name'] or not st.session_state.cv_form_data['email']:
+        if not st.session_state.cv_form_data.get('name') or not st.session_state.cv_form_data.get('email'):
             st.error("Please fill in at least your **Full Name** and **Email Address**.")
             return
 
@@ -1761,6 +1768,7 @@ def filter_jd_tab_content():
         
         with col1:
             # Skills Multiselect
+            # CRITICAL FIX: Ensure 'last_selected_skills' is used defensively
             selected_skills = st.multiselect(
                 "Skills Keywords (Select multiple)",
                 options=unique_skills_list,
@@ -1943,7 +1951,10 @@ def candidate_dashboard():
             )
             st.markdown("---")
 
-
+            # CRITICAL FIX: Ensure candidate_uploaded_resumes is initialized if accessed
+            if 'candidate_uploaded_resumes' not in st.session_state: 
+                st.session_state.candidate_uploaded_resumes = []
+                
             if uploaded_file is not None:
                 st.session_state.candidate_uploaded_resumes = [uploaded_file] 
                 st.session_state.pasted_cv_text = "" # Clear pasted text
@@ -1984,6 +1995,7 @@ def candidate_dashboard():
             
             pasted_text = st.text_area(
                 "Copy and paste your entire CV or resume text here.",
+                # CRITICAL FIX: Ensure 'pasted_cv_text' is accessed defensively
                 value=st.session_state.get('pasted_cv_text', ''),
                 height=300,
                 key='pasted_cv_text_input'
@@ -2028,6 +2040,7 @@ def candidate_dashboard():
         elif not GROQ_API_KEY:
              st.error("Cannot use Chatbot: GROQ_API_KEY is not configured.")
         else:
+            # CRITICAL FIX: Ensure 'qa_answer' is accessed defensively
             if 'qa_answer' not in st.session_state: st.session_state.qa_answer = ""
             
             question = st.text_input("Your Question", placeholder="e.g., What are the candidate's key skills?")
@@ -2052,6 +2065,7 @@ def candidate_dashboard():
         elif not GROQ_API_KEY:
              st.error("Cannot use Interview Prep: GROQ_API_KEY is not configured.")
         else:
+            # CRITICAL FIX: Ensure 'iq_output', 'interview_qa', 'evaluation_report' are accessed defensively
             if 'iq_output' not in st.session_state: st.session_state.iq_output = ""
             if 'interview_qa' not in st.session_state: st.session_state.interview_qa = [] 
             if 'evaluation_report' not in st.session_state: st.session_state.evaluation_report = "" 
@@ -2108,7 +2122,8 @@ def candidate_dashboard():
                         
                         answer = st.text_area(
                             f"Your Answer for Q{i+1}", 
-                            value=st.session_state.interview_qa[i]['answer'], 
+                            # CRITICAL FIX: Ensure list index is safe before accessing
+                            value=st.session_state.interview_qa[i].get('answer', ''), 
                             height=100,
                             key=f'answer_q_{i}',
                             label_visibility='collapsed'
@@ -2145,6 +2160,7 @@ def candidate_dashboard():
         st.header("📚 Manage Job Descriptions for Matching")
         st.markdown("Add multiple JDs here to compare your resume against them in the next tabs.")
         
+        # CRITICAL FIX: Ensure 'candidate_jd_list' is accessed defensively
         if "candidate_jd_list" not in st.session_state:
              st.session_state.candidate_jd_list = []
         
@@ -2257,7 +2273,8 @@ def candidate_dashboard():
                     st.session_state.candidate_jd_list = []
                     st.session_state.candidate_match_results = [] 
                     # Also clear filter display
-                    st.session_state.filtered_jds_display = [] 
+                    if 'filtered_jds_display' in st.session_state:
+                         del st.session_state.filtered_jds_display 
                     st.success("All JDs and associated match results have been cleared.")
                     st.rerun() 
 
@@ -2286,6 +2303,7 @@ def candidate_dashboard():
              st.error("Cannot use AI tools: GROQ_API_KEY is not configured.")
              
         else:
+            # CRITICAL FIX: Ensure all match/roadmap related keys are accessed defensively
             if "candidate_match_results" not in st.session_state:
                 st.session_state.candidate_match_results = []
             if "selected_roadmap_jd" not in st.session_state: 
@@ -2498,63 +2516,61 @@ def hiring_dashboard():
 def main():
     st.set_page_config(layout="wide", page_title="PragyanAI Job Portal")
 
-    # --- Session State Initialization ---
+    # --- Session State Initialization (CRITICAL FOR KEY ERROR FIX) ---
     if 'page' not in st.session_state: st.session_state.page = "login"
     
-    # Initialize session state for AI features (Defensive Initialization)
+    # Core Resume Data
     if 'parsed' not in st.session_state: st.session_state.parsed = {}
     if 'full_text' not in st.session_state: st.session_state.full_text = ""
     if 'excel_data' not in st.session_state: st.session_state.excel_data = None
-    if 'qa_answer' not in st.session_state: st.session_state.qa_answer = ""
-    if 'iq_output' not in st.session_state: st.session_state.iq_output = ""
-    if 'jd_fit_output' not in st.session_state: st.session_state.jd_fit_output = ""
-        
-        # Admin Dashboard specific lists
-    if 'admin_jd_list' not in st.session_state: st.session_state.admin_jd_list = [] 
-    if 'resumes_to_analyze' not in st.session_state: st.session_state.resumes_to_analyze = [] 
-    if 'admin_match_results' not in st.session_state: st.session_state.admin_match_results = [] 
-    if 'resume_statuses' not in st.session_state: st.session_state.resume_statuses = {} 
-        
-        # Vendor State Init
-    if 'vendors' not in st.session_state: st.session_state.vendors = []
-    if 'vendor_statuses' not in st.session_state: st.session_state.vendor_statuses = {}
-        
-        # Candidate Dashboard specific lists
-    # NOTE: These JD items now store content, name, role, job_type, and key_skills
-    if 'candidate_jd_list' not in st.session_state: st.session_state.candidate_jd_list = []
-    if 'candidate_match_results' not in st.session_state: st.session_state.candidate_match_results = []
     
-    # Resume Parsing Upload State
+    # Resume Parsing/Input State
     if 'candidate_uploaded_resumes' not in st.session_state: st.session_state.candidate_uploaded_resumes = []
-    
-    # NEW: Pasted Text State
     if 'pasted_cv_text' not in st.session_state: st.session_state.pasted_cv_text = "" 
     
-    # Interview Prep Q&A State (NEW)
+    # Q&A State
+    if 'qa_answer' not in st.session_state: st.session_state.qa_answer = ""
+        
+    # Interview Prep State
+    if 'iq_output' not in st.session_state: st.session_state.iq_output = ""
     if 'interview_qa' not in st.session_state: st.session_state.interview_qa = [] 
     if 'evaluation_report' not in st.session_state: st.session_state.evaluation_report = ""
-        
-    # CV Builder Form State (NEW)
+    
+    # CV Builder Form State
     if "cv_form_data" not in st.session_state: 
         st.session_state.cv_form_data = {
             "name": "", "email": "", "phone": "", "linkedin": "", "github": "",
             "skills": [], "experience": [], "education": [], "certifications": [], 
             "projects": [], "strength": [], "personal_details": ""
         }
+        
+    # JD Match/Filter/Roadmap State (Candidate)
+    if 'candidate_jd_list' not in st.session_state: st.session_state.candidate_jd_list = []
+    if 'candidate_match_results' not in st.session_state: st.session_state.candidate_match_results = []
+    if "selected_roadmap_jd" not in st.session_state: st.session_state.selected_roadmap_jd = None
+    if "skill_roadmap_output" not in st.session_state: st.session_state.skill_roadmap_output = None
     
-    # Filter State (NEW)
+    # JD Filter State
     if "candidate_filter_skills_multiselect" not in st.session_state:
         st.session_state.candidate_filter_skills_multiselect = []
     if "filtered_jds_display" not in st.session_state:
         st.session_state.filtered_jds_display = []
     if "last_selected_skills" not in st.session_state:
         st.session_state.last_selected_skills = []
+
+    # Admin Dashboard State
+    if 'admin_jd_list' not in st.session_state: st.session_state.admin_jd_list = [] 
+    if 'resumes_to_analyze' not in st.session_state: st.session_state.resumes_to_analyze = [] 
+    if 'admin_match_results' not in st.session_state: st.session_state.admin_match_results = [] 
+    if 'resume_statuses' not in st.session_state: st.session_state.resume_statuses = {} 
         
-    # Roadmap State (NEW)
-    if "selected_roadmap_jd" not in st.session_state:
-        st.session_state.selected_roadmap_jd = None
-    if "skill_roadmap_output" not in st.session_state:
-        st.session_state.skill_roadmap_output = None
+    # Vendor State Init
+    if 'vendors' not in st.session_state: st.session_state.vendors = []
+    if 'vendor_statuses' not in st.session_state: st.session_state.vendor_statuses = {}
+        
+    # Placeholder state (from old code, kept for completeness)
+    if 'jd_fit_output' not in st.session_state: st.session_state.jd_fit_output = ""
+    # --- End Session State Initialization ---
 
 
     # --- Page Routing ---
