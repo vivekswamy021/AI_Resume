@@ -245,6 +245,7 @@ def parse_with_llm(text, return_type='json'):
         json_end = json_str.rfind('}') + 1 # Include the '}' itself
 
         # 3. CRITICAL: Only slice the content between the first '{' and the last '}'
+        # This is the primary defense against the "Extra data" error.
         if json_start != -1 and json_end != -1 and json_end > json_start:
             json_str = json_str[json_start:json_end]
         else:
