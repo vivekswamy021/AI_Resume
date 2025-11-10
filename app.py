@@ -41,7 +41,7 @@ if not GROQ_API_KEY:
     # if the user is running it without a key, but alert them to the dependency.
     st.warning(
         "🚨 WARNING: GROQ_API_KEY environment variable not set. "
-        "AI functionality (Parsing, Matching, Q&A, Roadmap) will not work. "
+        "AI functionality (Parsing, Matching, Q&A) will not work. "
         "Please ensure a '.env' file exists with your key."
     )
     # Initialize a mock client to prevent immediate crash if key is missing, 
@@ -321,12 +321,11 @@ def extract_jd_from_linkedin_url(url: str) -> str:
         - Collaborate with engineering teams to deploy models into production environments.
         - Communicate findings and model performance to non-technical stakeholders.
         
-        **Requirements (Key Skills):**
-        - Must have **TensorFlow** or **PyTorch** experience.
-        - Strong background in **A/B testing** and **statistical analysis**.
-        - Proficiency in **Python** (Pandas, Scikit-learn) and **SQL**.
-        - Experience with **cloud platforms (AWS/GCP)** and containerization (**Docker**).
-        - Excellent communication and teamwork skills.
+        **Requirements:**
+        - MS/PhD in Computer Science, Statistics, or a quantitative field.
+        - 3+ years of experience as a Data Scientist.
+        - Expertise in Python (Pandas, Scikit-learn, TensorFlow/PyTorch).
+        - Experience with cloud platforms (AWS, Azure, or GCP).
         
         --- End Simulated JD ---
         """
@@ -362,7 +361,7 @@ def evaluate_jd_fit(job_description, parsed_json):
     1.  **Overall Fit Score:** A score out of 10.
     2.  **Section Match Percentages:** A percentage score for the match in the key sections (Skills, Experience, Education).
     3.  **Strengths/Matches:** Key points where the resume aligns well with the JD.
-    4.  **Gaps/Areas for Improvement:** Key requirements in the JD that are missing or weak in the resume. Focus heavily on missing hard skills.
+    4.  **Gaps/Areas for Improvement:** Key requirements in the JD that are missing or weak in the resume.
     5.  **Overall Summary:** A concise summary of the fit.
     
     **Format the output strictly as follows, ensuring the scores are easily parsable (use brackets or no brackets around scores):**
@@ -378,7 +377,7 @@ def evaluate_jd_fit(job_description, parsed_json):
     - Point 2
     
     Gaps/Areas for Improvement:
-    - Point 1 (Focus on missing skills like 'TensorFlow' or 'Docker')
+    - Point 1
     - Point 2
     
     Overall Summary: [Concise summary]
@@ -390,63 +389,6 @@ def evaluate_jd_fit(job_description, parsed_json):
         temperature=0.3
     )
     return response.choices[0].message.content.strip()
-
-
-def generate_skill_roadmap(jd_content, full_analysis):
-    """
-    Generates a detailed skill roadmap, course plan, and certificates
-    based on the JD requirements and the identified skill gaps.
-    """
-    if not GROQ_API_KEY:
-        return "AI Roadmap Generation Disabled: GROQ_API_KEY not set."
-    
-    prompt = f"""Based on the following Job Description (JD) and the detailed gap analysis, generate a comprehensive skill roadmap for the candidate.
-    
-    **Job Description (JD):**
-    {jd_content}
-    
-    **Detailed Match Analysis and Gaps:**
-    {full_analysis}
-    
-    
-    Structure the output in Markdown with the following sections:
-    
-    ## 🎯 Skill Gap Roadmap
-    
-    This roadmap is designed to bridge the gaps identified in the "Gaps/Areas for Improvement" section of the analysis.
-    
-    ### 1. Key Skill Gaps Identified (List the 3-5 most critical missing skills):
-    - [Missing Skill 1, e.g., 'TensorFlow']
-    - [Missing Skill 2, e.g., 'Cloud Security']
-    - [Missing Skill 3]
-    
-    ### 2. Detailed Course Plan (4-6 weeks suggested duration):
-    Outline a weekly learning plan focusing on the most critical hard skills.
-    
-    | Week | Focus Area | Key Concepts to Master |
-    | :--- | :--- | :--- |
-    | 1-2 | [Skill Gap 1] Fundamentals | Basics, Core syntax, Key libraries/tools |
-    | 3-4 | [Skill Gap 2] Practical Application | Hands-on project implementation, Case studies |
-    | 5-6 | [Integration & Optimization] | Combining new skills, Performance tuning, Final project |
-    
-    ### 3. Suggested Certificates and Resources:
-    Recommend 3 highly relevant certifications or structured learning paths (e.g., Coursera, Udemy, edX, specific vendor certs like AWS/Microsoft).
-    
-    - **Certificate 1 (Core Skill):** [Certificate Name] (Platform/Vendor, e.g., Coursera)
-    - **Certificate 2 (Tooling):** [Certificate Name] (Platform/Vendor)
-    - **Recommended Resource (Project Based):** [Name of a relevant GitHub repo or tutorial series]
-    """
-    
-    try:
-        response = client.chat.completions.create(
-            model=GROQ_MODEL, 
-            messages=[{"role": "user", "content": prompt}], 
-            temperature=0.6 
-        )
-        return response.choices[0].message.content.strip()
-        
-    except Exception as e:
-        return f"AI Error: Failed to generate skill roadmap. Details: {e}"
 
 
 def evaluate_interview_answers(qa_list, parsed_json):
@@ -1564,8 +1506,6 @@ def cv_management_tab_content():
         st.session_state.candidate_match_results = []
         st.session_state.interview_qa = []
         st.session_state.evaluation_report = ""
-        # Also clear the roadmap
-        st.session_state.skill_roadmap_output = "" 
 
         st.success(f"✅ CV data for **{st.session_state.parsed['name']}** successfully generated and loaded! You can now use the Chatbot, Match, and Interview Prep tabs.")
         
@@ -1876,7 +1816,7 @@ def candidate_dashboard():
         "❓ Interview Prep", 
         "📚 JD Management", 
         "🎯 Batch JD Match",
-        "🔍 Filter JD"
+        "🔍 Filter JD" # NEW TAB
     ])
     
     is_resume_parsed = bool(st.session_state.get('parsed', {}).get('name')) or bool(st.session_state.get('full_text'))
@@ -1946,7 +1886,6 @@ def candidate_dashboard():
                             st.session_state.excel_data = result['excel_data'] 
                             st.session_state.parsed['name'] = result['name'] 
                             clear_interview_state()
-                            st.session_state.skill_roadmap_output = "" # Clear roadmap on new parse
                             st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
                             st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
                         else:
@@ -1985,7 +1924,6 @@ def candidate_dashboard():
                             st.session_state.excel_data = result['excel_data'] 
                             st.session_state.parsed['name'] = result['name'] 
                             clear_interview_state()
-                            st.session_state.skill_roadmap_output = "" # Clear roadmap on new parse
                             st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
                             st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
                         else:
@@ -2235,9 +2173,8 @@ def candidate_dashboard():
                 if st.button("🗑️ Clear All JDs", key="clear_jds_candidate", use_container_width=True, help="Removes all currently loaded JDs."):
                     st.session_state.candidate_jd_list = []
                     st.session_state.candidate_match_results = [] 
-                    # Also clear filter display and roadmap
+                    # Also clear filter display
                     st.session_state.filtered_jds_display = [] 
-                    st.session_state.skill_roadmap_output = ""
                     st.success("All JDs and associated match results have been cleared.")
                     st.rerun() 
 
@@ -2268,8 +2205,6 @@ def candidate_dashboard():
         else:
             if "candidate_match_results" not in st.session_state:
                 st.session_state.candidate_match_results = []
-            if 'skill_roadmap_output' not in st.session_state:
-                st.session_state.skill_roadmap_output = ""
 
             # 1. Get all available JD names
             all_jd_names = [item['name'] for item in st.session_state.candidate_jd_list]
@@ -2290,7 +2225,6 @@ def candidate_dashboard():
             
             if st.button(f"Run Match Analysis on {len(jds_to_match)} Selected JD(s)"):
                 st.session_state.candidate_match_results = []
-                st.session_state.skill_roadmap_output = "" # Clear previous roadmap on new match run
                 
                 if not jds_to_match:
                     st.warning("Please select at least one Job Description to run the analysis.")
@@ -2333,7 +2267,6 @@ def candidate_dashboard():
 
                                 results_with_score.append({
                                     "jd_name": jd_name,
-                                    "jd_content": jd_content, # CRITICAL: Store content for roadmap generation
                                     "overall_score": overall_score,
                                     "numeric_score": int(overall_score) if overall_score.isdigit() else -1, # Added for sorting/ranking
                                     "skills_percent": skills_percent,
@@ -2344,7 +2277,6 @@ def candidate_dashboard():
                             except Exception as e:
                                 results_with_score.append({
                                     "jd_name": jd_name,
-                                    "jd_content": jd_content, # Keep content even if error
                                     "overall_score": "Error",
                                     "numeric_score": -1, # Set a low score for errors
                                     "skills_percent": "Error",
@@ -2383,6 +2315,8 @@ def candidate_dashboard():
                 
                 display_data = []
                 for item in results_df:
+                    # Also include extracted JD metadata for a richer view
+                    
                     # Find the full JD item to get the metadata
                     full_jd_item = next((jd for jd in st.session_state.candidate_jd_list if jd['name'] == item['jd_name']), {})
                     
@@ -2407,61 +2341,6 @@ def candidate_dashboard():
                     header_text = f"{rank_display}Report for **{item['jd_name'].replace('--- Simulated JD for: ', '')}** (Score: **{item['overall_score']}/10** | S: **{item.get('skills_percent', 'N/A')}%** | E: **{item.get('experience_percent', 'N/A')}%** | Edu: **{item.get('education_percent', 'N/A')}%**)"
                     with st.expander(header_text):
                         st.markdown(item['full_analysis'])
-                        
-                # --- 4. Skill Roadmap Generation (NEW FEATURE) ---
-                st.markdown("---")
-                st.subheader("4. Generate Skill Roadmap for a Specific JD")
-                
-                # Create options list for selectbox based on match results
-                roadmap_options = [
-                    f"{item['jd_name']} (Score: {item['overall_score']}/10)" 
-                    for item in st.session_state.candidate_match_results
-                    if item['overall_score'] != "Error"
-                ]
-                
-                selected_roadmap_jd_display = st.selectbox(
-                    "Select a Job Description to generate a Roadmap based on the identified gaps:",
-                    options=["Select JD"] + roadmap_options,
-                    key="roadmap_jd_select"
-                )
-                
-                if selected_roadmap_jd_display != "Select JD":
-                    # Extract the original JD name from the display string
-                    selected_jd_name = selected_roadmap_jd_display.split(" (Score:")[0].strip()
-                    
-                    # Find the full result object
-                    selected_match_result = next((
-                        item for item in st.session_state.candidate_match_results 
-                        if item['jd_name'] == selected_jd_name
-                    ), None)
-                    
-                    if selected_match_result:
-                        if st.button(f"🚀 Generate Roadmap for {selected_jd_name}"):
-                            
-                            with st.spinner(f"Generating detailed skill roadmap for {selected_jd_name}..."):
-                                try:
-                                    roadmap = generate_skill_roadmap(
-                                        selected_match_result['jd_content'], 
-                                        selected_match_result['full_analysis']
-                                    )
-                                    st.session_state.skill_roadmap_output = roadmap
-                                    st.success("Roadmap generated successfully!")
-                                except Exception as e:
-                                    st.session_state.skill_roadmap_output = f"Error generating roadmap: {e}"
-                                    st.error("Failed to generate roadmap. Check API key/status.")
-                
-                # Display the generated roadmap
-                if st.session_state.get('skill_roadmap_output'):
-                    st.markdown("---")
-                    st.markdown("### 🗺️ Your Personalized Skill Development Plan")
-                    st.markdown(st.session_state.skill_roadmap_output)
-                    st.download_button(
-                        label="⬇️ Download Skill Roadmap as Markdown",
-                        data=st.session_state.skill_roadmap_output,
-                        file_name=f"{selected_jd_name.replace(' ', '_')}_Skill_Roadmap.md",
-                        mime="text/markdown"
-                    )
-
 
     # --- TAB 6: Filter JD (NEW) ---
     with tab6:
@@ -2537,10 +2416,6 @@ def main():
         st.session_state.filtered_jds_display = []
     if "last_selected_skills" not in st.session_state:
         st.session_state.last_selected_skills = []
-        
-    # Skill Roadmap State (NEW)
-    if 'skill_roadmap_output' not in st.session_state:
-        st.session_state.skill_roadmap_output = ""
 
 
     # --- Page Routing ---
