@@ -17,7 +17,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
     def jd_qa_on_resume_placeholder(question, jd_text, parsed_json):
         """Simulates a chatbot answer based on JD requirements and resume content."""
         if not jd_text.strip():
-            return "Please provide a Job Description in the text area above to start the conversation about your fit for the role."
+            return "Please select a Job Description above to start the conversation about your fit for the role."
         
         # In a real app, this would call an LLM function:
         # result = llm_jd_qa(question, jd_text, parsed_json) 
@@ -662,20 +662,39 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                 st.warning("Please upload and parse a resume in the 'Resume Parsing' tab first.")
             elif "error" in st.session_state.parsed:
                  st.error("Cannot use Chatbot: Resume data has parsing errors.")
+            elif not st.session_state.get('candidate_jd_list'):
+                 st.error("Please add Job Descriptions in the 'JD Management' tab (Tab 4) before using this chatbot.")
             else:
                 if 'jd_qa_answer' not in st.session_state: st.session_state.jd_qa_answer = ""
-                if 'jd_chatbot_text' not in st.session_state: st.session_state.jd_chatbot_text = ""
+
+                # --- UPDATED JD SELECTION BLOCK ---
+                st.markdown("#### 1. Select Uploaded Job Description (JD)")
                 
-                st.markdown("#### 1. Paste Job Description (JD)")
+                # Create a list of JD names for the selectbox
+                jd_options = [jd['name'] for jd in st.session_state.candidate_jd_list]
                 
-                # JD input for the chatbot
-                jd_text = st.text_area(
-                    "Paste the full Job Description here:", 
-                    value=st.session_state.jd_chatbot_text,
-                    height=200,
-                    key="jd_chatbot_input"
+                selected_jd_name = st.selectbox(
+                    "Choose a Job Description to analyze your resume against:",
+                    options=["-- Select a JD --"] + jd_options,
+                    key="jd_chatbot_selector"
                 )
-                st.session_state.jd_chatbot_text = jd_text
+
+                jd_text = ""
+                
+                # Find the corresponding content for the selected JD
+                if selected_jd_name and selected_jd_name != "-- Select a JD --":
+                    selected_jd_data = next(
+                        (item for item in st.session_state.candidate_jd_list if item['name'] == selected_jd_name),
+                        {}
+                    )
+                    jd_text = selected_jd_data.get('content', '')
+                    
+                    st.info(f"Selected JD: **{selected_jd_name}**")
+                    # Optionally show the JD content in a small text area for verification
+                    with st.expander("View JD Content"):
+                        st.text(jd_text)
+
+                # --- END OF UPDATED JD SELECTION BLOCK ---
                 
                 st.markdown("#### 2. Ask a Question based on the JD")
                 
@@ -688,14 +707,13 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                 
                 if st.button("Get JD Match Answer", key="jd_qa_btn"):
                     if not jd_text.strip():
-                        st.error("Please paste the Job Description first.")
+                        st.error("Please select a valid Job Description first.")
                     elif not jd_question.strip():
                         st.error("Please enter a question.")
                     else:
                         with st.spinner("Analyzing JD and Resume to generate answer..."):
                             try:
-                                # IMPORTANT: Use the actual LLM function here when implemented.
-                                # For now, we use the placeholder function defined above.
+                                # This calls the placeholder function using the selected JD content
                                 answer = jd_qa_on_resume_placeholder(
                                     jd_question, 
                                     jd_text, 
