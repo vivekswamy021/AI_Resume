@@ -202,7 +202,12 @@ def extract_jd_metadata(jd_text):
 
 @st.cache_data(show_spinner="Analyzing content with Groq LLM...")
 def parse_with_llm(text, return_type='json'):
-    """Sends resume text to the LLM for structured information extraction."""
+    """
+    Sends resume text to the LLM for structured information extraction.
+    
+    🚨 FIX IMPLEMENTED HERE: Robustly handles malformed JSON output by 
+    aggressively stripping non-JSON content.
+    """
     if text.startswith("Error"):
         return {"error": text, "raw_output": ""}
     if not GROQ_API_KEY:
