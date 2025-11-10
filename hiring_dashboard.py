@@ -4,6 +4,7 @@
 # =================================================================
 
 import streamlit as st
+# Import go_to for navigation
 from app_utils import go_to
 
 
