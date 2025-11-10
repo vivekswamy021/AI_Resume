@@ -5,7 +5,7 @@ import traceback
 import tempfile
 import os
 from datetime import date
-from openai import OpenAI # Assuming OpenAI is used for the robust chatbot
+# Assuming OpenAI is used for the robust chatbot
 
 # Define the main function for the Candidate Dashboard
 # It takes necessary utility functions from app.py as arguments
