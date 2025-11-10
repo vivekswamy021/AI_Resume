@@ -8,7 +8,7 @@ import tempfile
 from groq import Groq
 from gtts import gTTS 
 import traceback
-import re # <-- Import 're' for the new fix
+import re 
 from dotenv import load_dotenv 
 from datetime import date 
 import csv 
@@ -172,7 +172,7 @@ def extract_jd_metadata(jd_text):
         )
         content = response.choices[0].message.content.strip()
 
-        # Robust JSON extraction using regex (Similar to the fix below, but applied here too)
+        # Robust JSON extraction using regex
         json_match = re.search(r'\{.*\}', content, re.DOTALL)
         
         if json_match:
@@ -232,9 +232,6 @@ def parse_with_llm(text, return_type='json'):
         content = response.choices[0].message.content.strip()
 
         # --- CRITICAL FIX: AGGRESSIVE JSON ISOLATION USING REGEX ---
-        # This regex searches for the first occurrence of '{' and then non-greedily 
-        # captures everything until the next '}' (including newlines/dots).
-        # This reliably isolates the JSON object even if the LLM adds extra text before or after.
         json_match = re.search(r'\{.*\}', content, re.DOTALL)
         
         if json_match:
@@ -486,6 +483,41 @@ Q3: Question text...
         temperature=0.5
     )
     return response.choices[0].message.content.strip()
+
+
+# --- NEW FUNCTION: JD CHATBOT Q&A ---
+def qa_on_jd(question, selected_jd_name):
+    """Chatbot for JD (Q&A) using LLM."""
+    if not GROQ_API_KEY:
+        return "AI Chatbot Disabled: GROQ_API_KEY not set."
+
+    # Find the JD content from the stored list
+    jd_item = next((jd for jd in st.session_state.candidate_jd_list if jd['name'] == selected_jd_name), None)
+
+    if not jd_item:
+        return "Error: Could not find the selected Job Description in the loaded list."
+
+    jd_text = jd_item['content']
+    jd_metadata = {k: v for k, v in jd_item.items() if k not in ['name', 'content']}
+
+    prompt = f"""Given the following Job Description and its extracted metadata:
+    
+    Job Description Title: {selected_jd_name}
+    JD Metadata (JSON): {json.dumps(jd_metadata, indent=2)}
+    JD Full Text:
+    ---
+    {jd_text}
+    ---
+    
+    Answer the following question about the Job Description concisely and directly.
+    If the information is not present in the provided text, state that clearly.
+    
+    Question: {question}
+    """
+    
+    response = client.chat.completions.create(model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}], temperature=0.4)
+    return response.choices[0].message.content.strip()
+# --- END NEW FUNCTION ---
 
 
 # -------------------------
@@ -1818,7 +1850,7 @@ def candidate_dashboard():
         "❓ Interview Prep", 
         "📚 JD Management", 
         "🎯 Batch JD Match",
-        "🔍 Filter JD" # NEW TAB
+        "🔍 Filter JD"
     ])
     
     is_resume_parsed = bool(st.session_state.get('parsed', {}).get('name')) or bool(st.session_state.get('full_text'))
@@ -1938,30 +1970,86 @@ def candidate_dashboard():
 
     # --- TAB 2: Resume Chatbot (Q&A) ---
     with tab2:
-        st.header("Resume Chatbot (Q&A)")
-        st.markdown("### Ask any question about the currently loaded resume.")
-        if not is_resume_parsed:
-            st.warning("Please upload and parse a resume in the 'Resume Parsing' tab first.")
-        elif "error" in st.session_state.parsed:
-             st.error("Cannot use Chatbot: Resume data has parsing errors.")
-        elif not GROQ_API_KEY:
-             st.error("Cannot use Chatbot: GROQ_API_KEY is not configured.")
-        else:
-            if 'qa_answer' not in st.session_state: st.session_state.qa_answer = ""
-            
-            question = st.text_input("Your Question", placeholder="e.g., What are the candidate's key skills?")
-            
-            if st.button("Get Answer", key="qa_btn"):
-                with st.spinner("Generating answer..."):
-                    try:
-                        answer = qa_on_resume(question)
-                        st.session_state.qa_answer = answer
-                    except Exception as e:
-                        st.error(f"Error during Q&A: {e}")
-                        st.session_state.qa_answer = "Could not generate an answer."
+        st.header("Resume/JD Chatbot (Q&A) 💬")
+        
+        # --- NESTED TABS ---
+        sub_tab_resume, sub_tab_jd = st.tabs([
+            "👤 Chat about Your Resume",
+            "📄 Chat about Saved JDs"
+        ])
+        
+        # --- 2A. RESUME CHATBOT CONTENT ---
+        with sub_tab_resume:
+            st.markdown("### Ask any question about the currently loaded resume.")
+            if not is_resume_parsed:
+                st.warning("Please upload and parse a resume in the 'Resume Parsing' tab or use the 'CV Management' tab first.")
+            elif "error" in st.session_state.parsed:
+                 st.error("Cannot use Resume Chatbot: Resume data has parsing errors.")
+            elif not GROQ_API_KEY:
+                 st.error("Cannot use Chatbot: GROQ_API_KEY is not configured.")
+            else:
+                if 'qa_answer_resume' not in st.session_state: st.session_state.qa_answer_resume = ""
+                
+                question = st.text_input(
+                    "Your Question (about Resume)", 
+                    placeholder="e.g., What are the candidate's key skills?",
+                    key="resume_qa_question"
+                )
+                
+                if st.button("Get Answer (Resume)", key="qa_btn_resume"):
+                    with st.spinner("Generating answer..."):
+                        try:
+                            answer = qa_on_resume(question)
+                            st.session_state.qa_answer_resume = answer
+                        except Exception as e:
+                            st.error(f"Error during Resume Q&A: {e}")
+                            st.session_state.qa_answer_resume = "Could not generate an answer."
 
-            if st.session_state.get('qa_answer'):
-                st.text_area("Answer", st.session_state.qa_answer, height=150)
+                if st.session_state.get('qa_answer_resume'):
+                    st.text_area("Answer (Resume)", st.session_state.qa_answer_resume, height=150)
+        
+        # --- 2B. JD CHATBOT CONTENT (NEW SUBTAB) ---
+        with sub_tab_jd:
+            st.markdown("### Ask any question about a saved Job Description.")
+            
+            if not st.session_state.candidate_jd_list:
+                st.warning("Please add Job Descriptions in the 'JD Management' tab (Tab 4) first.")
+            elif not GROQ_API_KEY:
+                 st.error("Cannot use JD Chatbot: GROQ_API_KEY is not configured.")
+            else:
+                if 'qa_answer_jd' not in st.session_state: st.session_state.qa_answer_jd = ""
+
+                # 1. JD Selection
+                jd_names = [jd['name'] for jd in st.session_state.candidate_jd_list]
+                selected_jd_name = st.selectbox(
+                    "Select Job Description to Query",
+                    options=jd_names,
+                    key="jd_qa_select"
+                )
+                
+                # 2. Question Input
+                question = st.text_input(
+                    "Your Question (about JD)", 
+                    placeholder="e.g., What is the minimum experience required for this role?",
+                    key="jd_qa_question"
+                )
+                
+                # 3. Get Answer Button
+                if st.button("Get Answer (JD)", key="qa_btn_jd"):
+                    if selected_jd_name and question.strip():
+                        with st.spinner(f"Generating answer for {selected_jd_name}..."):
+                            try:
+                                answer = qa_on_jd(question, selected_jd_name)
+                                st.session_state.qa_answer_jd = answer
+                            except Exception as e:
+                                st.error(f"Error during JD Q&A: {e}")
+                                st.session_state.qa_answer_jd = "Could not generate an answer."
+                    else:
+                        st.error("Please select a JD and enter a question.")
+
+                # 4. Answer Output
+                if st.session_state.get('qa_answer_jd'):
+                    st.text_area("Answer (JD)", st.session_state.qa_answer_jd, height=150)
 
     # --- TAB 3: Interview Prep (UNCHANGED) ---
     with tab3:
@@ -2374,7 +2462,11 @@ def main():
     if 'parsed' not in st.session_state: st.session_state.parsed = {}
     if 'full_text' not in st.session_state: st.session_state.full_text = ""
     if 'excel_data' not in st.session_state: st.session_state.excel_data = None
-    if 'qa_answer' not in st.session_state: st.session_state.qa_answer = ""
+    
+    # Chatbot/Q&A answers (Modified to distinguish Resume and JD)
+    if 'qa_answer_resume' not in st.session_state: st.session_state.qa_answer_resume = ""
+    if 'qa_answer_jd' not in st.session_state: st.session_state.qa_answer_jd = ""
+    
     if 'iq_output' not in st.session_state: st.session_state.iq_output = ""
     if 'jd_fit_output' not in st.session_state: st.session_state.jd_fit_output = ""
         
