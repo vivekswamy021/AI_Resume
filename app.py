@@ -245,6 +245,7 @@ def parse_with_llm(text, return_type='json'):
         json_end = json_str.rfind('}') + 1 # Include the '}' itself
 
         # 3. CRITICAL: Only slice the content between the first '{' and the last '}'
+        # This handles the "Extra data" error by truncating anything that comes after the final '}'
         if json_start != -1 and json_end != -1 and json_end > json_start:
             json_str = json_str[json_start:json_end]
         else:
@@ -255,6 +256,9 @@ def parse_with_llm(text, return_type='json'):
         parsed = json.loads(json_str)
 
     except json.JSONDecodeError as e:
+        # This is where the "Extra data" error is caught if the slicing fails to isolate 
+        # the JSON perfectly (which is rare but happens). The aggressive slicing above 
+        # is the fix, but if it still fails, we report the error clearly.
         error_msg = f"JSON decoding error from LLM. LLM returned malformed JSON. Error: {e}"
         parsed = {"error": error_msg, "raw_output": content}
     except ValueError as e: # Catch the MockGroqClient error
@@ -1671,6 +1675,7 @@ def filter_jd_tab_content():
     # --- End Extraction ---
 
     # --- Start Filter Form ---
+    # This entire block uses st.form, so the filtering only runs on button click
     with st.form(key="jd_filter_form"):
         st.markdown("### Select Filters")
         
@@ -1691,7 +1696,7 @@ def filter_jd_tab_content():
             selected_job_type = st.selectbox(
                 "Job Type",
                 options=["All Job Types"] + unique_job_types,
-                index=0, # Reset to default for the form
+                index=0, 
                 key="filter_job_type_select"
             )
             
@@ -1700,11 +1705,11 @@ def filter_jd_tab_content():
             selected_role = st.selectbox(
                 "Role Title",
                 options=["All Roles"] + unique_roles,
-                index=0, # Reset to default for the form
+                index=0, 
                 key="filter_role_select"
             )
 
-        # Apply Button
+        # Apply Button (The trigger for the filtering logic)
         apply_filters_button = st.form_submit_button("✅ Apply Filters", type="primary", use_container_width=True)
 
     # --- Start Filtering Logic (Inside the if apply_filters_button block) ---
