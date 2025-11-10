@@ -5,10 +5,10 @@ import traceback
 import tempfile
 import os
 from datetime import date
-# Groq import is removed as the generic JD Chatbot was removed in the previous turn.
 
 # Define the main function for the Candidate Dashboard
-# NOTE: The function signature must now include 'generate_skill_roadmap'.
+# NOTE: The function signature must include ALL required arguments:
+# generate_skill_roadmap, DEFAULT_JOB_TYPES, and DEFAULT_ROLES.
 def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_interview_answers, generate_interview_questions, question_section_options, extract_jd_metadata, get_file_type, extract_content, extract_jd_from_linkedin_url, clear_interview_state, evaluate_jd_fit, generate_skill_roadmap, DEFAULT_JOB_TYPES, DEFAULT_ROLES, qa_on_jd=None):
     
     # --- HELPER FUNCTIONS (Placeholder function for removed JD Chatbot) ---
@@ -362,6 +362,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                 st.session_state.filtered_jds_display = []
             return
         
+        # Use DEFAULT_ROLES and DEFAULT_JOB_TYPES from the function signature
         unique_roles = sorted(list(set(
             [item.get('role', 'General Analyst') for item in st.session_state.candidate_jd_list] + DEFAULT_ROLES
         )))
