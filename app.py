@@ -8,7 +8,7 @@ import tempfile
 from groq import Groq
 from gtts import gTTS 
 import traceback
-import re
+import re # <-- Import 're' for the new fix
 from dotenv import load_dotenv 
 from datetime import date 
 import csv 
@@ -172,21 +172,22 @@ def extract_jd_metadata(jd_text):
         )
         content = response.choices[0].message.content.strip()
 
-        # Robust JSON extraction
-        json_str = content
-        if json_str.startswith('```json'):
-            json_str = json_str[len('```json'):]
-        if json_str.endswith('```'):
-            json_str = json_str[:-len('```')]
-        json_str = json_str.strip()
-
-        json_start = json_str.find('{')
-        json_end = json_str.rfind('}') + 1
-
-        if json_start != -1 and json_end != -1 and json_end > json_start:
-            json_str = json_str[json_start:json_end]
-
-        parsed = json.loads(json_str)
+        # Robust JSON extraction using regex (Similar to the fix below, but applied here too)
+        json_match = re.search(r'\{.*\}', content, re.DOTALL)
+        
+        if json_match:
+            json_str = json_match.group(0).strip()
+            
+            # Additional cleanup for fences, although regex should handle it
+            if json_str.startswith('```json'):
+                json_str = json_str[len('```json'):]
+            if json_str.endswith('```'):
+                json_str = json_str[:-len('```')]
+            json_str = json_str.strip()
+            
+            parsed = json.loads(json_str)
+        else:
+            raise json.JSONDecodeError("Could not isolate a valid JSON structure from LLM response.", content, 0)
         
         # Ensure the output structure is always correct
         return {
@@ -230,35 +231,31 @@ def parse_with_llm(text, return_type='json'):
         )
         content = response.choices[0].message.content.strip()
 
-        # --- FIX: AGGRESSIVELY ISOLATE THE JSON OBJECT ---
-        json_str = content
+        # --- CRITICAL FIX: AGGRESSIVE JSON ISOLATION USING REGEX ---
+        # This regex searches for the first occurrence of '{' and then non-greedily 
+        # captures everything until the next '}' (including newlines/dots).
+        # This reliably isolates the JSON object even if the LLM adds extra text before or after.
+        json_match = re.search(r'\{.*\}', content, re.DOTALL)
         
-        # 1. Strip common LLM fences and surrounding whitespace
-        if json_str.startswith('```json'):
-            json_str = json_str[len('```json'):]
-        if json_str.endswith('```'):
-            json_str = json_str[:-len('```')]
-        json_str = json_str.strip()
+        if json_match:
+            json_str = json_match.group(0).strip()
+            
+            # Strip markdown fences if they still exist after the regex match
+            if json_str.startswith('```json'):
+                json_str = json_str[len('```json'):]
+            if json_str.endswith('```'):
+                json_str = json_str[:-len('```')]
+            json_str = json_str.strip()
 
-        # 2. Find the index of the first '{' and the last '}'
-        json_start = json_str.find('{')
-        json_end = json_str.rfind('}') + 1 # Include the '}' itself
-
-        # 3. CRITICAL: Only slice the content between the first '{' and the last '}'
-        # This handles the "Extra data" error by truncating anything that comes after the final '}'
-        if json_start != -1 and json_end != -1 and json_end > json_start:
-            json_str = json_str[json_start:json_end]
         else:
             # If we can't find a clear JSON object, raise an error 
             raise json.JSONDecodeError("Could not isolate a valid JSON structure from LLM response.", content, 0)
 
 
         parsed = json.loads(json_str)
+        # --- END CRITICAL FIX ---
 
     except json.JSONDecodeError as e:
-        # This is where the "Extra data" error is caught if the slicing fails to isolate 
-        # the JSON perfectly (which is rare but happens). The aggressive slicing above 
-        # is the fix, but if it still fails, we report the error clearly.
         error_msg = f"JSON decoding error from LLM. LLM returned malformed JSON. Error: {e}"
         parsed = {"error": error_msg, "raw_output": content}
     except ValueError as e: # Catch the MockGroqClient error
