@@ -2058,34 +2058,56 @@ def candidate_dashboard():
 
     # --- TAB 3: Interview Prep (UNCHANGED) ---
     with tab3:
-        st.header("Interview Preparation Tools")
-        if not is_resume_parsed or "error" in st.session_state.parsed:
-            st.warning("Please upload and successfully parse a resume first.")
-        elif not GROQ_API_KEY:
-             st.error("Cannot use Interview Prep: GROQ_API_KEY is not configured.")
-        else:
-            if 'iq_output' not in st.session_state: st.session_state.iq_output = ""
-            if 'interview_qa' not in st.session_state: st.session_state.interview_qa = [] 
-            if 'evaluation_report' not in st.session_state: st.session_state.evaluation_report = "" 
+    st.header("Interview Preparation Tools")
+    
+    # 🚨 Configuration and State Checks 🚨
+    if not is_resume_parsed or "error" in st.session_state.parsed:
+        st.warning("Please upload and successfully parse a resume first.")
+    elif not GROQ_API_KEY:
+        st.error("Cannot use Interview Prep: GROQ_API_KEY is not configured.")
+    else:
+        # 🎯 Subtab/Mode Selection 🎯
+        
+        # New selection for the two different modes of interview prep
+        prep_mode = st.selectbox(
+            "Select Preparation Mode",
+            ["Based on Resume Content", "Based on Job Description (JD)"],
+            key='prep_mode_selector',
+            on_change=clear_interview_state # Clear state when mode changes
+        )
+
+        # --- Resume-Based Preparation (Existing Logic) ---
+        if prep_mode == "Based on Resume Content":
             
-            st.subheader("1. Generate Interview Questions")
+            # Initializing state for Resume mode
+            if 'iq_output_resume' not in st.session_state: st.session_state.iq_output_resume = ""
+            if 'interview_qa_resume' not in st.session_state: st.session_state.interview_qa_resume = []
+            if 'evaluation_report_resume' not in st.session_state: st.session_state.evaluation_report_resume = ""
+            
+            # Use specific state keys for this mode
+            st.session_state.iq_output = st.session_state.iq_output_resume
+            st.session_state.interview_qa = st.session_state.interview_qa_resume
+            st.session_state.evaluation_report = st.session_state.evaluation_report_resume
+
+            st.subheader("1. Generate Interview Questions (From Resume)")
             
             section_choice = st.selectbox(
-                "Select Section", 
-                question_section_options, 
-                key='iq_section_c',
-                on_change=clear_interview_state 
+                "Select Section to Focus On", 
+                question_section_options, # Assuming this list is defined elsewhere
+                key='iq_section_c_resume',
+                on_change=clear_interview_state
             )
             
-            if st.button("Generate Interview Questions", key='iq_btn_c'):
+            if st.button("Generate Interview Questions", key='iq_btn_c_resume'):
                 with st.spinner("Generating questions..."):
                     try:
                         raw_questions_response = generate_interview_questions(st.session_state.parsed, section_choice)
-                        st.session_state.iq_output = raw_questions_response
+                        st.session_state.iq_output_resume = raw_questions_response
                         
-                        st.session_state.interview_qa = [] 
-                        st.session_state.evaluation_report = "" 
+                        st.session_state.interview_qa_resume = [] 
+                        st.session_state.evaluation_report_resume = "" 
                         
+                        # Parsing logic remains the same (using current_level and q_list)
                         q_list = []
                         current_level = ""
                         for line in raw_questions_response.splitlines():
@@ -2100,57 +2122,151 @@ def candidate_dashboard():
                                     "level": current_level
                                 })
                                 
-                        st.session_state.interview_qa = q_list
+                        st.session_state.interview_qa_resume = q_list
                         
-                        st.success(f"Generated {len(q_list)} questions based on your **{section_choice}** section.")
+                        st.success(f"Generated {len(q_list)} questions based on your **{section_choice}** resume section.")
                         
                     except Exception as e:
                         st.error(f"Error generating questions: {e}")
-                        st.session_state.iq_output = "Error generating questions."
-                        st.session_state.interview_qa = []
+                        st.session_state.iq_output_resume = "Error generating questions."
+                        st.session_state.interview_qa_resume = []
 
-            if st.session_state.get('interview_qa'):
-                st.markdown("---")
-                st.subheader("2. Practice and Record Answers")
+            # Update session state for the rest of the tab
+            st.session_state.interview_qa = st.session_state.interview_qa_resume
+            st.session_state.evaluation_report = st.session_state.evaluation_report_resume
+
+        # --- JD-Based Preparation (New Logic) ---
+        elif prep_mode == "Based on Job Description (JD)":
+            
+            # Initializing state for JD mode
+            if 'jd_text' not in st.session_state: st.session_state.jd_text = ""
+            if 'interview_qa_jd' not in st.session_state: st.session_state.interview_qa_jd = []
+            if 'evaluation_report_jd' not in st.session_state: st.session_state.evaluation_report_jd = ""
+
+            # Use specific state keys for this mode
+            st.session_state.interview_qa = st.session_state.interview_qa_jd
+            st.session_state.evaluation_report = st.session_state.evaluation_report_jd
+
+            st.subheader("1. Generate Interview Questions (From JD)")
+
+            # Input for Job Description
+            st.session_state.jd_text = st.text_area(
+                "Paste the full **Job Description (JD)** text here:",
+                value=st.session_state.jd_text,
+                height=300,
+                key='jd_input_area',
+                on_change=clear_interview_state # Clear existing QA when JD changes
+            )
+            
+            if st.button("Generate JD-Specific Questions", key='iq_btn_jd'):
+                if st.session_state.jd_text.strip():
+                    with st.spinner("Generating JD-specific questions..."):
+                        try:
+                            # Assuming you have a function like generate_jd_questions
+                            raw_questions_response = generate_jd_questions(
+                                st.session_state.parsed, 
+                                st.session_state.jd_text
+                            )
+                            # You may also store a 'jd_output' state if needed
+                            
+                            st.session_state.interview_qa_jd = [] 
+                            st.session_state.evaluation_report_jd = "" 
+                            
+                            # Parsing logic (can be reused if the output format is similar)
+                            q_list = []
+                            current_level = "JD Required Skill"
+                            for line in raw_questions_response.splitlines():
+                                line = line.strip()
+                                # Adapt parsing for JD-specific output format if different
+                                if line.startswith('[') and line.endswith(']'):
+                                    current_level = line.strip('[]')
+                                elif line.lower().startswith('q') and ':' in line:
+                                    question_text = line[line.find(':') + 1:].strip()
+                                    q_list.append({
+                                        "question": f"({current_level}) {question_text}",
+                                        "answer": "", 
+                                        "level": current_level
+                                    })
+                                    
+                            st.session_state.interview_qa_jd = q_list
+                            
+                            st.success(f"Generated {len(q_list)} questions matched to the **Job Description**.")
+                            
+                        except Exception as e:
+                            st.error(f"Error generating JD questions: {e}")
+                            st.session_state.interview_qa_jd = []
+                else:
+                    st.error("Please paste a Job Description before generating questions.")
+        
+        # --- Shared Practice and Evaluation Block ---
+        
+        # This block now uses st.session_state.interview_qa and st.session_state.evaluation_report 
+        # which were dynamically set based on the prep_mode selected above.
+
+        if st.session_state.get('interview_qa'):
+            st.markdown("---")
+            st.subheader("2. Practice and Record Answers")
+            
+            with st.form("interview_practice_form"):
                 
-                with st.form("interview_practice_form"):
+                # Check which session state list to iterate over
+                qa_list = st.session_state.interview_qa_resume if prep_mode == "Based on Resume Content" else st.session_state.interview_qa_jd
+
+                for i, qa_item in enumerate(qa_list):
+                    st.markdown(f"**Question {i+1}:** {qa_item['question']}")
                     
-                    for i, qa_item in enumerate(st.session_state.interview_qa):
-                        st.markdown(f"**Question {i+1}:** {qa_item['question']}")
-                        
-                        answer = st.text_area(
-                            f"Your Answer for Q{i+1}", 
-                            value=st.session_state.interview_qa[i]['answer'], 
-                            height=100,
-                            key=f'answer_q_{i}',
-                            label_visibility='collapsed'
-                        )
-                        st.session_state.interview_qa[i]['answer'] = answer 
-                        st.markdown("---") 
-                        
-                    submit_button = st.form_submit_button("Submit & Evaluate Answers", use_container_width=True)
+                    # Ensure the correct state key is updated
+                    answer_key = f'answer_q_{prep_mode.split()[2].lower()}_{i}' # e.g., 'answer_q_resume_0' or 'answer_q_jd_0'
+                    
+                    answer = st.text_area(
+                        f"Your Answer for Q{i+1}", 
+                        value=qa_list[i]['answer'], 
+                        height=100,
+                        key=answer_key,
+                        label_visibility='collapsed'
+                    )
+                    # Update the correct session state list
+                    qa_list[i]['answer'] = answer
+                    st.markdown("---") 
+                    
+                submit_button = st.form_submit_button("Submit & Evaluate Answers", use_container_width=True)
 
-                    if submit_button:
-                        
-                        if all(item['answer'].strip() for item in st.session_state.interview_qa):
-                            with st.spinner("Sending answers to AI Evaluator..."):
-                                try:
-                                    report = evaluate_interview_answers(
-                                        st.session_state.interview_qa,
-                                        st.session_state.parsed
-                                    )
-                                    st.session_state.evaluation_report = report
-                                    st.success("Evaluation complete! See the report below.")
-                                except Exception as e:
-                                    st.error(f"Evaluation failed: {e}")
-                                    st.session_state.evaluation_report = f"Evaluation failed: {e}\n{traceback.format_exc()}"
-                        else:
-                            st.error("Please answer all generated questions before submitting.")
+                if submit_button:
+                    
+                    if all(item['answer'].strip() for item in qa_list):
+                        with st.spinner("Sending answers to AI Evaluator..."):
+                            try:
+                                # The evaluation function needs to be aware of the JD context for JD-based evaluation
+                                report = evaluate_interview_answers(
+                                    qa_list,
+                                    st.session_state.parsed,
+                                    jd_text=st.session_state.jd_text if prep_mode == "Based on Job Description (JD)" else None
+                                )
+                                
+                                # Update the correct evaluation report state
+                                if prep_mode == "Based on Resume Content":
+                                    st.session_state.evaluation_report_resume = report
+                                else:
+                                    st.session_state.evaluation_report_jd = report
+                                    
+                                st.success("Evaluation complete! See the report below.")
+                            except Exception as e:
+                                st.error(f"Evaluation failed: {e}")
+                                error_report = f"Evaluation failed: {e}\n{traceback.format_exc()}"
+                                if prep_mode == "Based on Resume Content":
+                                    st.session_state.evaluation_report_resume = error_report
+                                else:
+                                    st.session_state.evaluation_report_jd = error_report
+                    else:
+                        st.error("Please answer all generated questions before submitting.")
                 
-                if st.session_state.get('evaluation_report'):
-                    st.markdown("---")
-                    st.subheader("3. AI Evaluation Report")
-                    st.markdown(st.session_state.evaluation_report)
+            # Display the relevant evaluation report
+            current_report = st.session_state.evaluation_report_resume if prep_mode == "Based on Resume Content" else st.session_state.evaluation_report_jd
+            
+            if current_report:
+                st.markdown("---")
+                st.subheader("3. AI Evaluation Report")
+                st.markdown(current_report)
 
     # --- TAB 4: JD Management (Candidate) ---
     with tab4:
