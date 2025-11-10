@@ -6,7 +6,12 @@
 import streamlit as st
 import re
 from datetime import date
-from app_utils import go_to, extract_jd_from_linkedin_url, extract_jd_metadata, get_file_type, extract_content, parse_and_store_resume, evaluate_jd_fit, traceback, tempfile, os, json
+# Import everything needed from app_utils
+from app_utils import (
+    go_to, extract_jd_from_linkedin_url, extract_jd_metadata, get_file_type, 
+    extract_content, parse_and_store_resume, evaluate_jd_fit, traceback, 
+    tempfile, os, json
+)
 
 
 def update_resume_status(resume_name, new_status, applied_jd, submitted_date, resume_list_index):
@@ -226,6 +231,7 @@ def admin_dashboard():
         if st.button("🚪 Log Out", use_container_width=True):
             go_to("login") 
     
+    # Initialization (Ensure consistency with main_app.py)
     if "admin_jd_list" not in st.session_state: st.session_state.admin_jd_list = []
     if "resumes_to_analyze" not in st.session_state: st.session_state.resumes_to_analyze = []
     if "admin_match_results" not in st.session_state: st.session_state.admin_match_results = []
