@@ -4,6 +4,7 @@
 # =================================================================
 
 import streamlit as st
+# Import core utilities and all dashboard modules
 from app_utils import go_to, GROQ_API_KEY
 from admin_dashboard_page import admin_dashboard
 from candidate_dashboard_page import candidate_dashboard
@@ -75,7 +76,7 @@ def main():
     # Expose the API Key state needed in other files
     if 'GROQ_API_KEY' not in st.session_state: st.session_state.GROQ_API_KEY = GROQ_API_KEY
 
-    # --- Session State Initialization ---
+    # --- Session State Initialization (Centralized here) ---
     if 'page' not in st.session_state: st.session_state.page = "login"
     if 'parsed' not in st.session_state: st.session_state.parsed = {}
     if 'full_text' not in st.session_state: st.session_state.full_text = ""
