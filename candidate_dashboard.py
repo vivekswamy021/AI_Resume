@@ -8,7 +8,7 @@ from datetime import date
 # Groq import is removed as the generic JD Chatbot was removed in the previous turn.
 
 # Define the main function for the Candidate Dashboard
-# NOTE: The function signature has been updated to include 'generate_skill_roadmap'.
+# NOTE: The function signature must now include 'generate_skill_roadmap'.
 def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_interview_answers, generate_interview_questions, question_section_options, extract_jd_metadata, get_file_type, extract_content, extract_jd_from_linkedin_url, clear_interview_state, evaluate_jd_fit, generate_skill_roadmap, DEFAULT_JOB_TYPES, DEFAULT_ROLES, qa_on_jd=None):
     
     # --- HELPER FUNCTIONS (Placeholder function for removed JD Chatbot) ---
@@ -881,7 +881,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                             st.markdown(st.session_state.jd_evaluation_report)
 
 
-    # --- TAB 4: Skill Roadmap (NEW) ---
+    # --- TAB 4: Skill Roadmap ---
     with tab_roadmap:
         st.header("🗺️ Skill Roadmap & Gap Analysis")
         st.markdown("Identify your skill gaps for a specific job description and get a personalized development plan.")
@@ -925,6 +925,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                 if st.button(f"Generate Skill Roadmap for **{selected_jd_name}**", key='generate_roadmap_btn', use_container_width=True):
                     with st.spinner("Analyzing skill gaps and generating personalized roadmap..."):
                         try:
+                            # Use the passed utility function
                             roadmap_report = generate_skill_roadmap(
                                 selected_jd_data['content'],
                                 st.session_state.parsed
