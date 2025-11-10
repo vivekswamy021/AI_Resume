@@ -7,7 +7,8 @@ import os
 from datetime import date
 
 # Define the main function for the Candidate Dashboard
-# NOTE: All 15 required positional arguments must be present before qa_on_jd=None.
+# NOTE: This signature MUST exactly match the call in your main application file (e.g., app.py).
+# All 15 required positional arguments must be present before the final optional argument (qa_on_jd=None).
 
 def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_interview_answers, generate_interview_questions, question_section_options, extract_jd_metadata, get_file_type, extract_content, extract_jd_from_linkedin_url, clear_interview_state, evaluate_jd_fit, generate_skill_roadmap, DEFAULT_JOB_TYPES, DEFAULT_ROLES, qa_on_jd=None):
     
