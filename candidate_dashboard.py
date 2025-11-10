@@ -5,7 +5,7 @@ import traceback
 import tempfile
 import os
 from datetime import date
-from groq import Groq # <--- REPLACED from openai import OpenAI
+from groq import Groq # USING GROQ CLIENT
 
 # Define the main function for the Candidate Dashboard
 # It takes necessary utility functions from app.py as arguments
@@ -14,7 +14,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
     # --- HELPER FUNCTIONS FOR ROBUST JD CHATBOT (UPDATED FOR GROQ) ---
     
     @st.cache_resource
-    def get_groq_client(): # <--- RENAMED AND UPDATED
+    def get_groq_client():
         """Initializes and returns the Groq client, safely handling API key."""
         try:
             # Assumes Groq API key is stored in .streamlit/secrets.toml
@@ -23,9 +23,9 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
             # Handle if the key is not configured
             st.error("Groq API key not found in Streamlit secrets. The JD Chatbot will not function.")
             return None
-        return Groq(api_key=api_key) # <--- USING GROQ CLIENT
+        return Groq(api_key=api_key)
     
-    # 2. LLM Interaction Function (UPDATED FOR GROQ)
+    # 2. LLM Interaction Function
     def generate_jd_response(client, messages):
         """Generates a streaming response from the Groq LLM based on conversation history."""
         if client is None:
@@ -35,7 +35,6 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
         with st.chat_message("assistant"):
             
             # --- Groq-Specific Model Selection ---
-            # Mixtral 8x7B is a fast and capable model on Groq
             GROQ_MODEL = "mixtral-8x7b-32768" 
             
             response = client.chat.completions.create(
@@ -148,7 +147,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
         
         if contact_info:
             md += f"| {' | '.join(contact_info)} |\n"
-            md += "| " + " | ".join(["---"] * len(contact_info)) + " |\n\n"
+            md += "| " + " | ".join(["---"] * len(contact_info) + ["\n"])
         
         section_order = ['personal_details', 'experience', 'projects', 'education', 'certifications', 'skills', 'strength']
         
@@ -694,7 +693,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                  st.error("Please **add Job Descriptions** in the 'JD Management' tab (Tab 4) before using this chatbot.")
             else:
                 # --- ROBUST JD CHATBOT LOGIC START ---
-                client = get_groq_client() # <--- CALLING GROQ CLIENT
+                client = get_groq_client() 
                 
                 # 1. JD Selection
                 st.markdown("#### 1. Select Job Description (JD) for Context")
@@ -726,8 +725,7 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                     jd_text = selected_jd_data.get('content', '')
                     
                     st.info(f"Context Loaded: **{selected_jd_name}**")
-                    with st.expander("View JD Content"):
-                        st.text(jd_text)
+                    # The JD content preview (st.expander) has been removed as requested.
                 
                 # 2. Chat Initialization (History Management)
                 if selected_jd_name == "-- Select a JD --" or not jd_text:
@@ -736,7 +734,6 @@ def candidate_dashboard(go_to, parse_and_store_resume, qa_on_resume, evaluate_in
                 elif client: # Proceed only if client is initialized
                     
                     # Initialize chat history if empty or if JD text changed
-                    # The content check prevents accidental reset if the same JD is re-selected, but allows reset if a new JD is picked.
                     if not st.session_state.get('jd_chatbot_messages') or (st.session_state.jd_chatbot_messages and st.session_state.jd_chatbot_messages[0].get('content') != jd_text):
                         system_prompt = (
                             "You are a helpful and experienced technical recruiter. "
