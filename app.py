@@ -1332,9 +1332,12 @@ def generate_cv_html(parsed_data):
         .contact-info span { margin: 0 8px; }
         .section { margin-bottom: 15px; page-break-inside: avoid; }
         .section h2 { border-bottom: 1px solid #999; padding-bottom: 3px; margin-bottom: 8px; font-size: 1.1em; text-transform: uppercase; color: #333; }
+        .item-list { margin-left: 10px; }
         .item-list ul { list-style-type: disc; margin-left: 20px; padding-left: 0; margin-top: 0; }
         .item-list ul li { margin-bottom: 3px; }
         .item-list p { margin: 3px 0 8px 0; }
+        .experience-item { margin-bottom: 15px; border-left: 3px solid #ccc; padding-left: 10px;}
+        .experience-item strong { display: block; margin-bottom: 3px; }
         a { color: #0056b3; text-decoration: none; }
     </style>
     """
@@ -1371,6 +1374,37 @@ def generate_cv_html(parsed_data):
             
             if k == 'personal_details' and isinstance(v, str):
                 html_content += f"<p>{v}</p>"
+            elif k == 'experience' and isinstance(v, list):
+                 # Handle structured experience output (assuming it's a list of strings)
+                for item in v:
+                    # Simple heuristic to format: assume format "Role @ Company (Years/Dates) - Responsibilities..."
+                    parts = item.split(' - ')
+                    
+                    if len(parts) >= 2:
+                        # Attempt to separate Role @ Company (Dates) from Responsibilities
+                        summary = parts[0]
+                        responsibilities = ' - '.join(parts[1:])
+                        
+                        # Try to isolate Role, Company, Dates from the summary part
+                        role_match = re.match(r'(.+?)\s*@\s*(.+?)\s*\((\d+.*|.+?)\)', summary)
+                        
+                        if role_match:
+                             # Display nicely formatted experience item
+                            role = role_match.group(1).strip()
+                            company = role_match.group(2).strip()
+                            dates = role_match.group(3).strip()
+                            
+                            html_content += '<div class="experience-item">'
+                            html_content += f"<strong>{role}</strong> at **{company}** *({dates})*"
+                            html_content += f"<ul><li>{responsibilities.replace(' - ', '</li><li>')}</li></ul>"
+                            html_content += '</div>'
+                        else:
+                            # Fallback if structure is complex or different
+                            html_content += f"<p>{item}</p>"
+                    else:
+                        # Fallback for simple string entry
+                        html_content += f"<p>{item}</p>"
+                
             elif isinstance(v, list):
                 html_content += '<ul>'
                 for item in v:
@@ -1448,7 +1482,7 @@ def cv_management_tab_content():
         
         # Row 3: Summary/Personal Details 
         st.markdown("---")
-        st.subheader("Summary / Personal Details")
+        st.subheader("Professional Summary / Personal Details")
         st.session_state.cv_form_data['personal_details'] = st.text_area(
             "Professional Summary or Personal Details (e.g., date of birth, address, nationality)", 
             value=st.session_state.cv_form_data.get('personal_details', ''), 
@@ -1457,32 +1491,129 @@ def cv_management_tab_content():
         )
         
         st.markdown("---")
-        st.subheader("Technical Sections (One Item per Line)")
+        st.subheader("Technical Sections")
 
-        # Skills
+        # Skills (Kept as text area for easy bulk entry)
         skills_text = "\n".join(st.session_state.cv_form_data.get('skills', []))
         new_skills_text = st.text_area(
-            "Key Skills (Technical and Soft)", 
+            "Key Skills (One skill per line)", 
             value=skills_text,
             height=150,
             key="cv_skills"
         )
         st.session_state.cv_form_data['skills'] = [s.strip() for s in new_skills_text.split('\n') if s.strip()]
         
-        # Experience
-        experience_text = "\n".join(st.session_state.cv_form_data.get('experience', []))
-        new_experience_text = st.text_area(
-            "Professional Experience (Job Roles, Companies, Dates, Key Responsibilities)", 
-            value=experience_text,
-            height=150,
-            key="cv_experience"
+        # ----------------------------------------------------
+        # 🚨 START: STRUCTURED PROFESSIONAL EXPERIENCE INPUT 🚨
+        # ----------------------------------------------------
+        st.markdown("### Professional Experience")
+        
+        # This experience input section is designed to ADD items to the list.
+        # It should NOT be part of the main `st.form("cv_builder_form")` if we want instant list updates.
+        # However, to avoid multiple forms, we'll use Streamlit's state management logic for the list.
+        # The input fields for ADDING should be outside the main form for simplicity, or we wrap the 
+        # add logic in its own mini-form. For clarity, let's keep the ADD section outside the main form
+        # but manage the list within session state.
+        
+        # --- Mini-Form / Container for Adding Experience ---
+        st.markdown("#### Add New Experience Entry")
+        
+        # Input fields for new entry
+        col_exp1, col_exp2 = st.columns(2)
+        with col_exp1:
+            new_company = st.text_input("Company Name", key="new_exp_company")
+        with col_exp2:
+            new_role = st.text_input("Role Worked On", key="new_exp_role")
+            
+        col_exp3, col_exp4 = st.columns(2)
+        with col_exp3:
+            new_years = st.number_input(
+                "Years of Experience (or Start Year)", 
+                min_value=0.0, 
+                max_value=50.0, 
+                value=1.0, 
+                step=0.5,
+                key="new_exp_years"
+            )
+        with col_exp4:
+             new_dates = st.text_input("Dates Worked (e.g., Jan 2020 - Dec 2023)", key="new_exp_dates")
+            
+        new_responsibilities = st.text_area(
+            "Key Responsibilities (one per line, will be merged)", 
+            height=100,
+            key="new_exp_responsibilities"
         )
-        st.session_state.cv_form_data['experience'] = [e.strip() for e in new_experience_text.split('\n') if e.strip()]
+        
+        if st.button("➕ Add Experience Entry", key="add_experience_btn"):
+            if new_company.strip() and new_role.strip() and (new_years > 0 or new_dates.strip()):
+                
+                # Format the entry into a single string for the 'experience' list
+                # Format: Role Worked On @ Company Name (Dates/Years) - Responsibility 1 | Responsibility 2
+                
+                date_or_year = new_dates.strip() if new_dates.strip() else f"{new_years} years"
+                resp_list = [r.strip() for r in new_responsibilities.split('\n') if r.strip()]
+                
+                formatted_resp = " | ".join(resp_list) if resp_list else "No responsibilities provided."
+                
+                new_entry = f"{new_role.strip()} @ {new_company.strip()} ({date_or_year}) - {formatted_resp}"
+                
+                # Append to the session state list
+                st.session_state.cv_form_data['experience'].append(new_entry)
+                
+                st.success(f"Experience '{new_role.strip()}' at '{new_company.strip()}' added!")
+                
+                # Rerun to clear the input fields (due to Streamlit component re-rendering)
+                st.session_state['new_exp_company'] = ""
+                st.session_state['new_exp_role'] = ""
+                st.session_state['new_exp_years'] = 1.0
+                st.session_state['new_exp_dates'] = ""
+                st.session_state['new_exp_responsibilities'] = ""
+                
+                st.rerun() # Use rerun to clear input fields 
+            else:
+                st.error("Please fill in Company Name, Role, and either Years or Dates.")
+        
+        st.markdown("#### Current Experience List")
+        
+        # Display current list and provide a way to edit/remove (simplified display)
+        if st.session_state.cv_form_data.get('experience'):
+            
+            # Create a simple, non-editable text area to view the current list for editing later in the main form.
+            current_experience_text = "\n".join(st.session_state.cv_form_data['experience'])
+            
+            st.markdown("""
+                <div style='font-size: 12px; color: orange;'>
+                Note: The entries below are automatically generated by the 'Add Entry' button. 
+                You can manually edit this text area to make changes or remove entries.
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # This final text area is what the main form uses for submission, 
+            # allowing users to manually edit the structured strings if needed.
+            experience_text = st.text_area(
+                "Edit Current Professional Experience Entries (One entry per line)", 
+                value=current_experience_text,
+                height=200,
+                key="cv_experience_final"
+            )
+            # Link this final text area back to the session state data being submitted
+            st.session_state.cv_form_data['experience'] = [e.strip() for e in experience_text.split('\n') if e.strip()]
+            
+        else:
+            st.info("No experience entries added yet.")
+            # Ensure the state is still linked to an empty text area if nothing is added
+            st.session_state.cv_form_data['experience'] = []
+
+        # ----------------------------------------------------
+        # 🚨 END: STRUCTURED PROFESSIONAL EXPERIENCE INPUT 🚨
+        # ----------------------------------------------------
+        
+        st.markdown("---")
 
         # Education
         education_text = "\n".join(st.session_state.cv_form_data.get('education', []))
         new_education_text = st.text_area(
-            "Education (Degrees, Institutions, Dates)", 
+            "Education (Degrees, Institutions, Dates - One per line)", 
             value=education_text,
             height=100,
             key="cv_education"
@@ -1492,7 +1623,7 @@ def cv_management_tab_content():
         # Certifications
         certifications_text = "\n".join(st.session_state.cv_form_data.get('certifications', []))
         new_certifications_text = st.text_area(
-            "Certifications (Name, Issuing Body, Date)", 
+            "Certifications (Name, Issuing Body, Date - One per line)", 
             value=certifications_text,
             height=100,
             key="cv_certifications"
@@ -1502,7 +1633,7 @@ def cv_management_tab_content():
         # Projects
         projects_text = "\n".join(st.session_state.cv_form_data.get('projects', []))
         new_projects_text = st.text_area(
-            "Projects (Name, Description, Technologies)", 
+            "Projects (Name, Description, Technologies - One project per line)", 
             value=projects_text,
             height=150,
             key="cv_projects"
@@ -1857,8 +1988,8 @@ def candidate_dashboard():
         "📚 JD Management", 
         "🎯 Batch JD Match",
         "🔍 Filter JD",
-        "💬 Resume/JD Chatbot (Q&A)", # MOVED TO END
-        "❓ Interview Prep"            # MOVED TO END
+        "💬 Resume/JD Chatbot (Q&A)", 
+        "❓ Interview Prep"            
     ])
     
     is_resume_parsed = bool(st.session_state.get('parsed', {}).get('name')) or bool(st.session_state.get('full_text'))
@@ -2343,8 +2474,6 @@ def candidate_dashboard():
                             except Exception as e:
                                 st.error(f"Error during JD Q&A: {e}")
                                 st.session_state.qa_answer_jd = "Could not generate an answer."
-                    else:
-                        st.error("Please select a JD and enter a question.")
 
                 # 4. Answer Output
                 if st.session_state.get('qa_answer_jd'):
