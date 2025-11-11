@@ -397,8 +397,8 @@ def evaluate_jd_fit(job_description, parsed_json):
     return response.choices[0].message.content.strip()
 
 
-def evaluate_interview_answers(qa_list, parsed_json):
-    """Evaluates the user's answers against the resume content and provides feedback."""
+def evaluate_interview_answers(qa_list, parsed_json, jd_content=None):
+    """Evaluates the user's answers against the resume content and optionally JD content, providing feedback."""
     if not GROQ_API_KEY:
         return "AI Evaluation Disabled: GROQ_API_KEY not set."
     if "error" in parsed_json: return "Cannot evaluate due to resume parsing errors."
@@ -411,15 +411,28 @@ def evaluate_interview_answers(qa_list, parsed_json):
         for item in qa_list
     ])
     
+    # Context for the LLM
+    context = f"""
+    --- Candidate's Resume Content (for context) ---
+    {resume_summary}
+    """
+    
+    if jd_content and jd_content.strip():
+        context += f"""
+        
+    --- Job Description Used to Generate Questions ---
+    {jd_content}
+    """
+        
     prompt = f"""You are an expert HR Interviewer. Evaluate the candidate's answers based on the following:
-    1.  **The Candidate's Resume Content (for context):**
-        {resume_summary}
-    2.  **The Candidate's Questions and Answers:**
-        {qa_summary}
+    {context}
+    
+    --- Candidate's Questions and Answers ---
+    {qa_summary}
 
     For each Question-Answer pair, provide a score (out of 10) and detailed feedback. The feedback must include:
-    * **Clarity & Accuracy:** How well the answer directly and accurately addresses the question, referencing the resume context.
-    * **Gaps & Improvements:** Specific suggestions on how the candidate could improve the answer or what critical resume points they missed/could elaborate on.
+    * **Clarity & Accuracy:** How well the answer directly and accurately addresses the question, referencing the resume/JD context.
+    * **Gaps & Improvements:** Specific suggestions on how the candidate could improve the answer or what critical points they missed/could elaborate on.
     
     Finally, provide an **Overall Summary** and a **Total Score (out of {len(qa_list) * 10})**.
     
@@ -456,76 +469,69 @@ def evaluate_interview_answers(qa_list, parsed_json):
     return response.choices[0].message.content.strip()
 
 
-def generate_interview_questions(parsed_json, section):
-    """Generates categorized interview questions using LLM."""
+def generate_interview_questions(content, type="resume", section=""):
+    """Generates categorized interview questions using LLM based on resume section OR JD."""
     if not GROQ_API_KEY:
         return "AI Functions Disabled: GROQ_API_KEY not set."
-    if "error" in parsed_json: return "Cannot generate questions due to resume parsing errors."
     
-    section_title = section.replace("_", " ").title()
-    section_content = parsed_json.get(section, "")
-    if isinstance(section_content, (list, dict)):
-        section_content = json.dumps(section_content, indent=2)
-    elif not isinstance(section_content, str):
-        section_content = str(section_content)
+    if type == "resume":
+        parsed_json = content
+        if "error" in parsed_json: 
+            return "Cannot generate questions due to resume parsing errors."
+        
+        section_title = section.replace("_", " ").title()
+        section_content = parsed_json.get(section, "")
+        if isinstance(section_content, (list, dict)):
+            section_content = json.dumps(section_content, indent=2)
+        elif not isinstance(section_content, str):
+            section_content = str(section_content)
 
-    if not section_content.strip():
-        return f"No significant content found for the '{section_title}' section in the parsed resume. Please select a section with relevant data to generate questions."
+        if not section_content.strip():
+            return f"No significant content found for the '{section_title}' section in the parsed resume. Please select a section with relevant data to generate questions."
 
-    prompt = f"""Based on the following {section_title} section from the resume: {section_content}
-Generate 3 interview questions each for these levels: Generic, Basic, Intermediate, Difficult.
-**IMPORTANT: Format the output strictly as follows, with level headers and questions starting with 'Qx:':**
-[Generic]
-Q1: Question text...
-Q2: Question text...
-Q3: Question text...
-[Basic]
-Q1: Question text...
-...
-[Difficult]
-Q3: Question text...
-    """
+        prompt = f"""Based on the following {section_title} section from the candidate's resume: {section_content}
+        Generate 3 interview questions each for these levels: Generic, Basic, Intermediate, Difficult.
+        **IMPORTANT: Format the output strictly as follows, with level headers and questions starting with 'Qx:':**
+        [Generic]
+        Q1: Question text...
+        Q2: Question text...
+        Q3: Question text...
+        [Basic]
+        Q1: Question text...
+        ...
+        [Difficult]
+        Q3: Question text...
+        """
+        
+    elif type == "jd":
+        jd_text = content
+        
+        prompt = f"""Based on the following Job Description (JD) and the candidate's resume (if provided):
+        
+        Job Description:
+        ---
+        {jd_text}
+        ---
+        
+        Generate 4 interview questions (Behavioral, Technical, Situational, Motivational) that specifically test the candidate's fit for this role.
+        
+        **IMPORTANT: Format the output strictly as follows, with a single header and questions starting with 'Qx:':**
+        [JD Specific Questions]
+        Q1: Question text (Focusing on a technical requirement from the JD)...
+        Q2: Question text (Focusing on a behavioral aspect like teamwork or conflict resolution)...
+        Q3: Question text (Focusing on a situational problem related to the JD's responsibilities)...
+        Q4: Question text (Focusing on motivation for this specific role/company)...
+        """
+    else:
+        return "Invalid question generation type."
+
+
     response = client.chat.completions.create(
         model=GROQ_MODEL, 
         messages=[{"role": "user", "content": prompt}], 
         temperature=0.5
     )
     return response.choices[0].message.content.strip()
-
-
-# --- NEW FUNCTION: JD CHATBOT Q&A ---
-def qa_on_jd(question, selected_jd_name):
-    """Chatbot for JD (Q&A) using LLM."""
-    if not GROQ_API_KEY:
-        return "AI Chatbot Disabled: GROQ_API_KEY not set."
-
-    # Find the JD content from the stored list
-    jd_item = next((jd for jd in st.session_state.candidate_jd_list if jd['name'] == selected_jd_name), None)
-
-    if not jd_item:
-        return "Error: Could not find the selected Job Description in the loaded list."
-
-    jd_text = jd_item['content']
-    jd_metadata = {k: v for k, v in jd_item.items() if k not in ['name', 'content']}
-
-    prompt = f"""Given the following Job Description and its extracted metadata:
-    
-    Job Description Title: {selected_jd_name}
-    JD Metadata (JSON): {json.dumps(jd_metadata, indent=2)}
-    JD Full Text:
-    ---
-    {jd_text}
-    ---
-    
-    Answer the following question about the Job Description concisely and directly.
-    If the information is not present in the provided text, state that clearly.
-    
-    Question: {question}
-    """
-    
-    response = client.chat.completions.create(model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}], temperature=0.4)
-    return response.choices[0].message.content.strip()
-# --- END NEW FUNCTION ---
 
 
 # -------------------------
@@ -558,6 +564,7 @@ def dump_to_excel(parsed_json, filename):
                     for k, v in content.items():
                         if v:
                             ws.append(["", f"{k.replace('_', ' ').title()}: {v}"])
+                    
                 else:
                     ws.append(["", str(content)])
 
@@ -640,6 +647,40 @@ def qa_on_resume(question):
     """
     response = client.chat.completions.create(model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}], temperature=0.4)
     return response.choices[0].message.content.strip()
+
+# --- NEW FUNCTION: JD CHATBOT Q&A ---
+def qa_on_jd(question, selected_jd_name):
+    """Chatbot for JD (Q&A) using LLM."""
+    if not GROQ_API_KEY:
+        return "AI Chatbot Disabled: GROQ_API_KEY not set."
+
+    # Find the JD content from the stored list
+    jd_item = next((jd for jd in st.session_state.candidate_jd_list if jd['name'] == selected_jd_name), None)
+
+    if not jd_item:
+        return "Error: Could not find the selected Job Description in the loaded list."
+
+    jd_text = jd_item['content']
+    jd_metadata = {k: v for k, v in jd_item.items() if k not in ['name', 'content']}
+
+    prompt = f"""Given the following Job Description and its extracted metadata:
+    
+    Job Description Title: {selected_jd_name}
+    JD Metadata (JSON): {json.dumps(jd_metadata, indent=2)}
+    JD Full Text:
+    ---
+    {jd_text}
+    ---
+    
+    Answer the following question about the Job Description concisely and directly.
+    If the information is not present in the provided text, state that clearly.
+    
+    Question: {question}
+    """
+    
+    response = client.chat.completions.create(model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}], temperature=0.4)
+    return response.choices[0].message.content.strip()
+# --- END NEW FUNCTION ---
 
 # -------------------------
 # UI PAGES: Authentication (Login, Signup)
@@ -1857,8 +1898,8 @@ def candidate_dashboard():
         "📚 JD Management", 
         "🎯 Batch JD Match",
         "🔍 Filter JD",
-        "💬 Resume/JD Chatbot (Q&A)", # MOVED TO END
-        "❓ Interview Prep"            # MOVED TO END
+        "💬 Resume/JD Chatbot (Q&A)", 
+        "❓ Interview Prep"            
     ])
     
     is_resume_parsed = bool(st.session_state.get('parsed', {}).get('name')) or bool(st.session_state.get('full_text'))
@@ -2343,109 +2384,194 @@ def candidate_dashboard():
                             except Exception as e:
                                 st.error(f"Error during JD Q&A: {e}")
                                 st.session_state.qa_answer_jd = "Could not generate an answer."
-                    else:
-                        st.error("Please select a JD and enter a question.")
 
                 # 4. Answer Output
                 if st.session_state.get('qa_answer_jd'):
                     st.text_area("Answer (JD)", st.session_state.qa_answer_jd, height=150)
 
 
-    # --- TAB 6 (Now tab_interview_prep): Interview Prep (MOVED) ---
+    # --- TAB 6 (Now tab_interview_prep): Interview Prep (MOVED & MODIFIED) ---
     with tab_interview_prep:
         st.header("Interview Preparation Tools")
-        if not is_resume_parsed or "error" in st.session_state.parsed:
-            st.warning("Please upload and successfully parse a resume first.")
-        elif not GROQ_API_KEY:
-             st.error("Cannot use Interview Prep: GROQ_API_KEY is not configured.")
-        else:
-            if 'iq_output' not in st.session_state: st.session_state.iq_output = ""
-            if 'interview_qa' not in st.session_state: st.session_state.interview_qa = [] 
-            if 'evaluation_report' not in st.session_state: st.session_state.evaluation_report = "" 
-            
-            st.subheader("1. Generate Interview Questions")
-            
-            section_choice = st.selectbox(
-                "Select Section", 
-                question_section_options, 
-                key='iq_section_c',
-                on_change=clear_interview_state 
-            )
-            
-            if st.button("Generate Interview Questions", key='iq_btn_c'):
-                with st.spinner("Generating questions..."):
-                    try:
-                        raw_questions_response = generate_interview_questions(st.session_state.parsed, section_choice)
-                        st.session_state.iq_output = raw_questions_response
-                        
-                        st.session_state.interview_qa = [] 
-                        st.session_state.evaluation_report = "" 
-                        
-                        q_list = []
-                        current_level = ""
-                        for line in raw_questions_response.splitlines():
-                            line = line.strip()
-                            if line.startswith('[') and line.endswith(']'):
-                                current_level = line.strip('[]')
-                            elif line.lower().startswith('q') and ':' in line:
-                                question_text = line[line.find(':') + 1:].strip()
-                                q_list.append({
-                                    "question": f"({current_level}) {question_text}",
-                                    "answer": "", 
-                                    "level": current_level
-                                })
-                                
-                        st.session_state.interview_qa = q_list
-                        
-                        st.success(f"Generated {len(q_list)} questions based on your **{section_choice}** section.")
-                        
-                    except Exception as e:
-                        st.error(f"Error generating questions: {e}")
-                        st.session_state.iq_output = "Error generating questions."
-                        st.session_state.interview_qa = []
-
-            if st.session_state.get('interview_qa'):
-                st.markdown("---")
-                st.subheader("2. Practice and Record Answers")
+        
+        # --- NESTED TABS FOR INTERVIEW PREP ---
+        sub_tab_resume_questions, sub_tab_jd_questions = st.tabs([
+            "👤 Resume Section Questions",
+            "📚 Job Description Interview" # NEW SUB-TAB
+        ])
+        
+        # --- 6A. RESUME SECTION QUESTIONS (EXISTING LOGIC) ---
+        with sub_tab_resume_questions:
+            st.subheader("1. Generate Questions based on Your Resume Sections")
+            if not is_resume_parsed or "error" in st.session_state.parsed:
+                st.warning("Please upload and successfully parse a resume first in the 'Resume Parsing' tab.")
+            elif not GROQ_API_KEY:
+                 st.error("Cannot use Resume Interview Prep: GROQ_API_KEY is not configured.")
+            else:
+                section_choice = st.selectbox(
+                    "Select Resume Section to Drill Down On", 
+                    question_section_options, 
+                    key='iq_section_c_resume',
+                    on_change=clear_interview_state 
+                )
                 
-                with st.form("interview_practice_form"):
+                if st.button("Generate Resume Questions", key='iq_btn_c_resume'):
+                    with st.spinner("Generating questions..."):
+                        try:
+                            raw_questions_response = generate_interview_questions(
+                                st.session_state.parsed, 
+                                type="resume", 
+                                section=section_choice
+                            )
+                            
+                            st.session_state.iq_output = raw_questions_response
+                            st.session_state.interview_qa = [] 
+                            st.session_state.evaluation_report = "" 
+                            
+                            q_list = []
+                            current_level = "General"
+                            # Parse structured response
+                            for line in raw_questions_response.splitlines():
+                                line = line.strip()
+                                if line.startswith('[') and line.endswith(']'):
+                                    current_level = line.strip('[]')
+                                elif line.lower().startswith('q') and ':' in line:
+                                    question_text = line[line.find(':') + 1:].strip()
+                                    q_list.append({
+                                        "question": f"({current_level}) {question_text}",
+                                        "answer": "", 
+                                        "level": current_level,
+                                        "context": "Resume"
+                                    })
+                                    
+                            st.session_state.interview_qa = q_list
+                            
+                            st.success(f"Generated {len(q_list)} questions based on your **{section_choice}** section.")
+                            
+                        except Exception as e:
+                            st.error(f"Error generating questions: {e}")
+                            st.session_state.iq_output = "Error generating questions."
+                            st.session_state.interview_qa = []
+
+        # --- 6B. JD INTERVIEW QUESTIONS (NEW LOGIC) ---
+        with sub_tab_jd_questions:
+            st.subheader("1. Generate Questions based on a Job Description")
+            
+            if not is_resume_parsed:
+                st.warning("You must have a resume loaded to get contextual interview questions. Please use the 'Resume Parsing' tab.")
+            elif not st.session_state.candidate_jd_list:
+                st.warning("Please add Job Descriptions in the 'JD Management' tab (Tab 4) first.")
+            elif not GROQ_API_KEY:
+                 st.error("Cannot use JD Interview Prep: GROQ_API_KEY is not configured.")
+            else:
+                # Select JD
+                jd_names = [jd['name'] for jd in st.session_state.candidate_jd_list]
+                selected_jd_name = st.selectbox(
+                    "Select Job Description",
+                    options=jd_names,
+                    key='iq_jd_select',
+                    on_change=clear_interview_state 
+                )
+                
+                selected_jd_content = next((jd['content'] for jd in st.session_state.candidate_jd_list if jd['name'] == selected_jd_name), "")
+                
+                if st.button(f"Generate Questions for **{selected_jd_name}**", key='iq_btn_c_jd'):
+                    with st.spinner("Generating JD-specific questions..."):
+                        try:
+                            raw_questions_response = generate_interview_questions(
+                                selected_jd_content, 
+                                type="jd"
+                            )
+                            
+                            st.session_state.iq_output = raw_questions_response
+                            st.session_state.interview_qa = [] 
+                            st.session_state.evaluation_report = "" 
+                            st.session_state.last_jd_for_questions = selected_jd_name # Store JD name for evaluation
+                            
+                            q_list = []
+                            current_level = "JD Specific"
+                            # Parse structured response
+                            for line in raw_questions_response.splitlines():
+                                line = line.strip()
+                                if line.startswith('[') and line.endswith(']'):
+                                    current_level = line.strip('[]')
+                                elif line.lower().startswith('q') and ':' in line:
+                                    question_text = line[line.find(':') + 1:].strip()
+                                    q_list.append({
+                                        "question": question_text, # Don't prepend level as questions are already descriptive
+                                        "answer": "", 
+                                        "level": current_level,
+                                        "context": "JD"
+                                    })
+                                    
+                            st.session_state.interview_qa = q_list
+                            
+                            st.success(f"Generated {len(q_list)} tailored questions for **{selected_jd_name}**.")
+                            
+                        except Exception as e:
+                            st.error(f"Error generating questions: {e}")
+                            st.session_state.iq_output = "Error generating questions."
+                            st.session_state.interview_qa = []
+
+
+        # --- 2. Practice and Record Answers (Unified Section for both sub-tabs) ---
+        if st.session_state.get('interview_qa'):
+            st.markdown("---")
+            st.subheader("2. Practice and Record Answers")
+            
+            # Retrieve the JD content if questions were JD-specific
+            current_jd_content = ""
+            if st.session_state.interview_qa and st.session_state.interview_qa[0].get("context") == "JD":
+                last_jd_name = st.session_state.get('last_jd_for_questions', st.session_state.candidate_jd_list[0]['name'] if st.session_state.candidate_jd_list else "")
+                current_jd_content = next((jd['content'] for jd in st.session_state.candidate_jd_list if jd['name'] == last_jd_name), "")
+                
+                st.info(f"Questions were generated based on **{last_jd_name}**. The evaluation will use both your answers and the JD content.")
+            else:
+                 st.info("Questions were generated based on your **Resume Sections**. The evaluation will use your answers and resume content.")
+            
+            with st.form("interview_practice_form"):
+                
+                for i, qa_item in enumerate(st.session_state.interview_qa):
+                    st.markdown(f"**Question {i+1}:** {qa_item['question']}")
                     
-                    for i, qa_item in enumerate(st.session_state.interview_qa):
-                        st.markdown(f"**Question {i+1}:** {qa_item['question']}")
-                        
-                        answer = st.text_area(
-                            f"Your Answer for Q{i+1}", 
-                            value=st.session_state.interview_qa[i]['answer'], 
-                            height=100,
-                            key=f'answer_q_{i}',
-                            label_visibility='collapsed'
-                        )
-                        st.session_state.interview_qa[i]['answer'] = answer 
-                        st.markdown("---") 
-                        
-                    submit_button = st.form_submit_button("Submit & Evaluate Answers", use_container_width=True)
+                    answer = st.text_area(
+                        f"Your Answer for Q{i+1}", 
+                        value=st.session_state.interview_qa[i]['answer'], 
+                        height=100,
+                        key=f'answer_q_{i}',
+                        label_visibility='collapsed'
+                    )
+                    # Update the answer in the session state list immediately
+                    st.session_state.interview_qa[i]['answer'] = answer 
+                    st.markdown("---") 
+                    
+                submit_button = st.form_submit_button("Submit & Evaluate Answers", use_container_width=True)
 
-                    if submit_button:
-                        
-                        if all(item['answer'].strip() for item in st.session_state.interview_qa):
-                            with st.spinner("Sending answers to AI Evaluator..."):
-                                try:
-                                    report = evaluate_interview_answers(
-                                        st.session_state.interview_qa,
-                                        st.session_state.parsed
-                                    )
-                                    st.session_state.evaluation_report = report
-                                    st.success("Evaluation complete! See the report below.")
-                                except Exception as e:
-                                    st.error(f"Evaluation failed: {e}")
-                                    st.session_state.evaluation_report = f"Evaluation failed: {e}\n{traceback.format_exc()}"
-                        else:
-                            st.error("Please answer all generated questions before submitting.")
-                
-                if st.session_state.get('evaluation_report'):
-                    st.markdown("---")
-                    st.subheader("3. AI Evaluation Report")
-                    st.markdown(st.session_state.evaluation_report)
+                if submit_button:
+                    
+                    if all(item['answer'].strip() for item in st.session_state.interview_qa):
+                        with st.spinner("Sending answers to AI Evaluator..."):
+                            try:
+                                # Pass JD content only if the context is JD
+                                jd_context_for_eval = current_jd_content if st.session_state.interview_qa and st.session_state.interview_qa[0].get("context") == "JD" else None
+                                
+                                report = evaluate_interview_answers(
+                                    st.session_state.interview_qa,
+                                    st.session_state.parsed,
+                                    jd_content=jd_context_for_eval
+                                )
+                                st.session_state.evaluation_report = report
+                                st.success("Evaluation complete! See the report below.")
+                            except Exception as e:
+                                st.error(f"Evaluation failed: {e}")
+                                st.session_state.evaluation_report = f"Evaluation failed: {e}\n{traceback.format_exc()}"
+                    else:
+                        st.error("Please answer all generated questions before submitting.")
+            
+            if st.session_state.get('evaluation_report'):
+                st.markdown("---")
+                st.subheader("3. AI Evaluation Report")
+                st.markdown(st.session_state.evaluation_report)
 
 
 def hiring_dashboard():
@@ -2505,6 +2631,7 @@ def main():
     # Interview Prep Q&A State (NEW)
     if 'interview_qa' not in st.session_state: st.session_state.interview_qa = [] 
     if 'evaluation_report' not in st.session_state: st.session_state.evaluation_report = ""
+    if 'last_jd_for_questions' not in st.session_state: st.session_state.last_jd_for_questions = ""
         
     # CV Builder Form State (NEW)
     if "cv_form_data" not in st.session_state: 
