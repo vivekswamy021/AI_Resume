@@ -756,10 +756,10 @@ def update_resume_status(resume_name, new_status, applied_jd, submitted_date, re
     else:
         st.error(f"Error: Could not find resume index {resume_list_index} for update.")
         
- # --- NEWLY ISOLATED FUNCTIONS FOR APPROVAL TABS ---
+# --- NEWLY ISOLATED FUNCTIONS FOR APPROVAL TABS ---
+
 def candidate_approval_tab_content():
-    
-    st.header("👤 Candidate Approval")
+    st.header("👤 Candidate Approval")
     st.markdown("### Resume Status List")
     
     if "resumes_to_analyze" not in st.session_state or not st.session_state.resumes_to_analyze:
@@ -854,10 +854,10 @@ def candidate_approval_tab_content():
         
     st.subheader("Summary of All Resumes")
     st.dataframe(summary_data, use_container_width=True)
+    
 # ----vendor-------    
 def vendor_approval_tab_content():
     st.header("🤝 Vendor Approval") 
-    
     st.markdown("### 1. Add New Vendor")
     if "vendors" not in st.session_state:
         st.session_state.vendors = []
