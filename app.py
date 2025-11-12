@@ -323,6 +323,24 @@ def extract_jd_from_linkedin_url(url: str) -> str:
                 job_title = job_title_raw
     except:
         pass # Keep the default job_title if URL parsing fails
+    # --- REAL EXTRACTION / API INTEGRATION SECTION ---
+    
+    try:
+        return f"""
+[Extraction Failed: Cannot access live LinkedIn data directly]
+
+To make this function work, you must replace this message with:
+1. **API Integration:** Use a third-party job data API (Recommended).
+2. **Advanced Scraping:** Implement a full browser automation tool (like Selenium or Playwright) to navigate the dynamic content, which is resource-intensive and often blocked.
+
+URL Requested: {url}
+Detected Title: {job_title}
+"""   
+    except requests.exceptions.RequestException as e:
+        return f"[HTTP Request Error: Failed to fetch URL {url}. Status code likely 403 Forbidden. Error: {e}]"
+        
+    except Exception as e:
+        return f"[Fatal Extraction Error: {e}]"
 
 def evaluate_jd_fit(job_description, parsed_json):
     """Evaluates how well a resume fits a given job description, including section-wise scores."""
