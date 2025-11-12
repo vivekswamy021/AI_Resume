@@ -10,9 +10,8 @@ from gtts import gTTS
 import traceback
 import re 
 from dotenv import load_dotenv 
-from datetime import date, timedelta 
+from datetime import date 
 import csv 
-import random # Needed for simulating signup dates
 
 # Ensure that UploadedFile class is accessible for type checking
 from streamlit.runtime.uploaded_file_manager import UploadedFile
@@ -565,63 +564,6 @@ def dump_to_excel(parsed_json, filename):
     wb.save(filename)
     with open(filename, "rb") as f:
         return f.read()
-    
-# --- NEW FUNCTION FOR ADMIN CANDIDATE APPROVAL TAB ---
-def get_brief_summary(parsed_json):
-    """Generates a brief candidate summary (simulated by combining key fields)."""
-    summary_parts = []
-    
-    # 1. First Degree/University
-    education = parsed_json.get('education', [])
-    if education and isinstance(education, list):
-        # Extract the first degree/institution
-        first_edu = education[0]
-        # Attempt to clean up the string to get a meaningful part (e.g., University name)
-        university_match = re.search(r'(University|College|Institute|School|Academy|MIT|Harvard|Stanford)[\w\s]*', first_edu, re.IGNORECASE)
-        university = university_match.group(0).strip() if university_match else first_edu.split(',')[-1].strip()
-        summary_parts.append(f"Education: {university}")
-    
-    # 2. Latest Role/Experience
-    experience = parsed_json.get('experience', [])
-    if experience and isinstance(experience, list):
-        latest_experience = experience[0]
-        summary_parts.append(f"Latest Role: {latest_experience.splitlines()[0].strip().split(',')[0]}")
-        
-    # 3. Top Skills
-    skills = parsed_json.get('skills', [])
-    if skills and isinstance(skills, list):
-        summary_parts.append(f"Top Skills: {', '.join(skills[:3])}...")
-        
-    if summary_parts:
-        return " | ".join(summary_parts)
-    return "No structured summary data available."
-
-
-def extract_university_name(education_list):
-    """Extracts the first major university/institution name from the education list."""
-    if not isinstance(education_list, list) or not education_list:
-        return "N/A"
-    
-    # Simple regex to look for common institution names near the end of the string
-    # This is a heuristic and might not catch everything
-    edu_string = education_list[0]
-    
-    # 1. Look for known keywords
-    keywords = r'(University|College|Institute|School|Acadamy|Polytechnic|IIM|IIT|NIT|\bMIT\b|\bHarvard\b|\bStanford\b)'
-    match = re.search(keywords, edu_string, re.IGNORECASE)
-    
-    if match:
-        # Try to extract the full institution name around the match
-        parts = edu_string.split(',')
-        for part in parts:
-            if match.group(1) in part:
-                return part.strip()
-        # Fallback to the part containing the match
-        return match.group(0).strip()
-    
-    # 2. Fallback to the last comma-separated part (often the location or institution)
-    return edu_string.split(',')[-1].strip() or edu_string.strip()[:30] + "..."
-
 
 def parse_and_store_resume(file_input, file_name_key='default', source_type='file'):
     """
@@ -673,20 +615,12 @@ def parse_and_store_resume(file_input, file_name_key='default', source_type='fil
     
     # Use parsed name if available, otherwise use the generated file_name
     final_name = parsed.get('name', file_name)
-    
-    # NEW: Generate simulated signup date
-    # Randomly choose a date within the last 30 days
-    days_ago = random.randint(0, 30)
-    simulated_signup_date = (date.today() - timedelta(days=days_ago)).strftime("%Y-%m-%d")
 
     return {
         "parsed": parsed,
         "full_text": text,
         "excel_data": excel_data,
-        "name": final_name,
-        # NEW FIELDS ADDED FOR ADMIN APPROVAL CONTEXT
-        "simulated_signup_date": simulated_signup_date 
-        # Other contact info and education are pulled from 'parsed' when needed
+        "name": final_name
     }
 
 
@@ -794,54 +728,16 @@ def candidate_approval_tab_content():
     jd_options = [item['name'].replace("--- Simulated JD for: ", "") for item in st.session_state.admin_jd_list]
     jd_options.insert(0, "Select JD") 
 
-    # Sort resumes based on the **Simulated Sign Up Date** (new requirement)
-    # The date is stored as a string "YYYY-MM-DD"
-    resumes_sorted = sorted(
-        st.session_state.resumes_to_analyze,
-        key=lambda x: x.get('simulated_signup_date', '2999-01-01') # Use a very late date for those missing the field
-    )
-
-
-    for idx, resume_data in enumerate(resumes_sorted):
+    for idx, resume_data in enumerate(st.session_state.resumes_to_analyze):
         resume_name = resume_data['name']
         current_status = st.session_state.resume_statuses.get(resume_name, "Pending")
         
         current_applied_jd = resume_data.get('applied_jd', 'N/A (Pending Assignment)')
         current_submitted_date = resume_data.get('submitted_date', date.today().strftime("%Y-%m-%d"))
-        
-        # --- NEW EXTRACTIONS ---
-        parsed_data = resume_data.get('parsed', {})
-        email = parsed_data.get('email', 'N/A')
-        phone = parsed_data.get('phone', 'N/A')
-        
-        # Extract university name heuristically
-        university = extract_university_name(parsed_data.get('education', []))
-        
-        # Generate brief info
-        brief_info = get_brief_summary(parsed_data)
-        
-        # Simulated signup date
-        signup_date = resume_data.get('simulated_signup_date', 'N/A (No Date)')
-        
-        # --- END NEW EXTRACTIONS ---
 
         with st.container(border=True):
-            st.markdown(f"**Candidate:** **{resume_name}** (Signed up: {signup_date})")
+            st.markdown(f"**Resume:** **{resume_name}**")
             
-            # --- NEW CANDIDATE INFO ROW ---
-            col_email, col_phone, col_uni = st.columns(3)
-            with col_email:
-                st.markdown(f"📧 **Email:** {email}")
-            with col_phone:
-                st.markdown(f"📱 **Phone:** {phone}")
-            with col_uni:
-                st.markdown(f"🎓 **University:** {university}")
-            
-            st.markdown(f"**Brief Info:** {brief_info}")
-            st.markdown("---")
-            # --- END NEW CANDIDATE INFO ROW ---
-            
-            # Application details
             col_jd_input, col_date_input = st.columns(2)
             
             with col_jd_input:
@@ -851,12 +747,11 @@ def candidate_approval_tab_content():
                 except ValueError:
                     jd_default_index = 0
                     
-                # Use a stable key that doesn't depend on sorting index (use the resume_name)
                 new_applied_jd = st.selectbox(
                     "Applied for JD Title", 
                     options=jd_options,
                     index=jd_default_index,
-                    key=f"jd_select_{resume_name}",
+                    key=f"jd_select_{resume_name}_{idx}",
                 )
                 
             with col_date_input:
@@ -868,7 +763,7 @@ def candidate_approval_tab_content():
                 new_submitted_date = st.date_input(
                     "Submitted Date", 
                     value=date_obj,
-                    key=f"date_input_{resume_name}"
+                    key=f"date_input_{resume_name}_{idx}"
                 )
                 
             st.markdown(f"**Current Status:** **{current_status}**")
@@ -883,51 +778,40 @@ def candidate_approval_tab_content():
                     "Set Status",
                     ["Pending", "Approved", "Rejected", "Shortlisted"],
                     index=["Pending", "Approved", "Rejected", "Shortlisted"].index(current_status),
-                    key=f"status_select_{resume_name}",
+                    key=f"status_select_{resume_name}_{idx}",
                     label_visibility="collapsed"
                 )
 
             with col2:
-                # Find the original index for update
-                original_index = next((i for i, r in enumerate(st.session_state.resumes_to_analyze) if r['name'] == resume_name), -1)
-
-                if st.button("Update", key=f"update_btn_{resume_name}"):
+                if st.button("Update", key=f"update_btn_{resume_name}_{idx}"):
                     
                     if new_applied_jd == "Select JD" and len(jd_options) > 1:
                         jd_to_save = "N/A (Pending Assignment)"
                     else:
                         jd_to_save = new_applied_jd
                         
-                    if original_index != -1:
-                         update_resume_status(
-                            resume_name, 
-                            new_status, 
-                            jd_to_save, 
-                            new_submitted_date.strftime("%Y-%m-%d"),
-                            original_index
-                        )
-                        st.rerun() 
-                    else:
-                        st.error(f"Could not find original index for {resume_name}. Cannot update.")
+                    update_resume_status(
+                        resume_name, 
+                        new_status, 
+                        jd_to_save, 
+                        new_submitted_date.strftime("%Y-%m-%d"),
+                        idx
+                    )
+                    st.rerun() 
             
     st.markdown("---")
             
     summary_data = []
-    # Use the original unsorted list for the summary table
     for resume_data in st.session_state.resumes_to_analyze:
         name = resume_data['name']
-        parsed_data = resume_data.get('parsed', {})
-        
         summary_data.append({
             "Resume": name, 
-            "Signed Up": resume_data.get('simulated_signup_date', 'N/A'), # Added
-            "Email": parsed_data.get('email', 'N/A'), # Added
             "Applied JD": resume_data.get('applied_jd', 'N/A'),
             "Submitted Date": resume_data.get('submitted_date', 'N/A'),
             "Status": st.session_state.resume_statuses.get(name, "Pending")
         })
         
-    st.subheader("Summary of All Resumes (Unsorted)")
+    st.subheader("Summary of All Resumes")
     st.dataframe(summary_data, use_container_width=True)
 
 
@@ -1215,7 +1099,6 @@ def admin_dashboard():
                                 if "error" not in result:
                                     result['applied_jd'] = "N/A (Pending Assignment)"
                                     result['submitted_date'] = date.today().strftime("%Y-%m-%d")
-                                    # result['simulated_signup_date'] is added inside parse_and_store_resume
                                     
                                     st.session_state.resumes_to_analyze.append(result)
                                     
@@ -1664,11 +1547,6 @@ def cv_management_tab_content():
         st.session_state.candidate_match_results = []
         st.session_state.interview_qa = []
         st.session_state.evaluation_report = ""
-        
-        # 5. Simulate signup date for Admin view compatibility
-        if 'simulated_signup_date' not in st.session_state.parsed:
-            st.session_state.parsed['simulated_signup_date'] = date.today().strftime("%Y-%m-%d")
-
 
         st.success(f"✅ CV data for **{st.session_state.parsed['name']}** successfully generated and loaded! You can now use the Chatbot, Match, and Interview Prep tabs.")
         
@@ -1979,8 +1857,8 @@ def candidate_dashboard():
         "📚 JD Management", 
         "🎯 Batch JD Match",
         "🔍 Filter JD",
-        "💬 Resume/JD Chatbot (Q&A)", 
-        "❓ Interview Prep"            
+        "💬 Resume/JD Chatbot (Q&A)", # MOVED TO END
+        "❓ Interview Prep"            # MOVED TO END
     ])
     
     is_resume_parsed = bool(st.session_state.get('parsed', {}).get('name')) or bool(st.session_state.get('full_text'))
@@ -2052,8 +1930,6 @@ def candidate_dashboard():
                             st.session_state.full_text = result['full_text']
                             st.session_state.excel_data = result['excel_data'] 
                             st.session_state.parsed['name'] = result['name'] 
-                            # Propagate the simulated signup date
-                            st.session_state.parsed['simulated_signup_date'] = result['simulated_signup_date']
                             clear_interview_state()
                             st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
                             st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
@@ -2092,8 +1968,6 @@ def candidate_dashboard():
                             st.session_state.full_text = result['full_text']
                             st.session_state.excel_data = result['excel_data'] 
                             st.session_state.parsed['name'] = result['name'] 
-                             # Propagate the simulated signup date
-                            st.session_state.parsed['simulated_signup_date'] = result['simulated_signup_date']
                             clear_interview_state()
                             st.success(f"✅ Successfully loaded and parsed **{result['name']}**.")
                             st.info("View, edit, and download the parsed data in the **CV Management** tab.") 
@@ -2469,6 +2343,8 @@ def candidate_dashboard():
                             except Exception as e:
                                 st.error(f"Error during JD Q&A: {e}")
                                 st.session_state.qa_answer_jd = "Could not generate an answer."
+                    else:
+                        st.error("Please select a JD and enter a question.")
 
                 # 4. Answer Output
                 if st.session_state.get('qa_answer_jd'):
