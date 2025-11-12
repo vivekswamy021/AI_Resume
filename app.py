@@ -402,7 +402,6 @@ def evaluate_interview_answers(qa_list, parsed_json):
     if not GROQ_API_KEY:
         return "AI Evaluation Disabled: GROQ_API_KEY not set."
     if "error" in parsed_json: return "Cannot evaluate due to resume parsing errors."
-
     
     resume_summary = json.dumps(parsed_json, indent=2)
     
