@@ -6,3 +6,6 @@ pdfplumber
 python-docx
 gtts
 openpyxl
+re
+requests # Need this for HTTP requests (GET)
+BeautifulSoup # Need this for parsing HTML (if scraping)
