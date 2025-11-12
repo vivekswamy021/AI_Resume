@@ -297,50 +297,69 @@ def parse_with_llm(text, return_type='json'):
 
 def extract_jd_from_linkedin_url(url: str) -> str:
     """
-    Simulates JD content extraction from a LinkedIn URL.
+    Attempts to extract JD content from a LinkedIn URL.
+    
+    NOTE: Real-world extraction (web scraping) from LinkedIn is difficult
+    due to dynamic content, rate limits, and robots.txt restrictions.
+    A dedicated Job Data API is usually required for reliable, legal access.
+    This function outlines the structure but requires real scraping/API logic.
     """
+    
+    # 1. Basic URL validation
+    if "linkedin.com/jobs/" not in url:
+        return f"[Error: Not a valid LinkedIn Job URL format: {url}]"
+
+    job_title = "Job Description" 
+    
     try:
-        job_title = "Data Scientist"
-        try:
-            # More robust title extraction from a common LinkedIn job URL format
-            match = re.search(r'/jobs/view/([^/]+)', url) or re.search(r'/jobs/(\w+)', url)
-            if match:
-                job_title = match.group(1).split('?')[0].replace('-', ' ').title()
-                if job_title.lower().startswith('view'): job_title = 'Data Scientist' # Fallback
-        except:
-            pass
+        # Attempt to get a cleaner job title from the URL (your existing logic)
+        match = re.search(r'/jobs/view/([^/]+)', url) or re.search(r'/jobs/(\w+)', url)
+        if match:
+            job_title_raw = match.group(1).split('?')[0].replace('-', ' ').title()
+            if not job_title_raw.lower().startswith('view'):
+                job_title = job_title_raw
+    except:
+        pass # Keep the default job_title if URL parsing fails
+        
+    
+    # --- REAL EXTRACTION / API INTEGRATION SECTION ---
+    
+    try:
+        # Placeholder for API or Web Scraping Logic
+        
+        # ⚠️ WARNING: Directly using requests.get() on LinkedIn often fails 
+        # due to login requirements or blocks (403 Forbidden).
+        # headers = {'User-Agent': 'Mozilla/5.0'}
+        # response = requests.get(url, headers=headers)
+        # response.raise_for_status() # Raise exception for bad status codes
+        
+        # if response.status_code == 200:
+        #     soup = BeautifulSoup(response.content, 'html.parser')
+        #     # The actual JD content selector is complex and changes frequently.
+        #     # Example: jd_element = soup.find('div', class_='description__text')
+        #     # jd_text = jd_element.get_text(separator='\n', strip=True)
+        #     
+        #     # If a real JD was extracted:
+        #     # return jd_text
+        
+        
+        # If no real data is extracted, return a descriptive error:
+        return f"""
+[Extraction Failed: Cannot access live LinkedIn data directly]
 
-        if "linkedin.com/jobs/" not in url:
-             return f"[Error: Not a valid LinkedIn Job URL format: {url}]"
+To make this function work, you must replace this message with:
+1. **API Integration:** Use a third-party job data API (Recommended).
+2. **Advanced Scraping:** Implement a full browser automation tool (like Selenium or Playwright) to navigate the dynamic content, which is resource-intensive and often blocked.
 
+URL Requested: {url}
+Detected Title: {job_title}
+"""
         
-        # Simulated synthesized JD content 
-        jd_text = f"""
-        --- Simulated JD for: {job_title} ---
+    except requests.exceptions.RequestException as e:
+        return f"[HTTP Request Error: Failed to fetch URL {url}. Status code likely 403 Forbidden. Error: {e}]"
         
-        **Company:** Quantum Analytics Inc.
-        **Role:** {job_title}
-        
-        **Responsibilities:**
-        - Develop and implement machine learning models to solve complex business problems.
-        - Clean, transform, and analyze large datasets using Python/R and SQL.
-        - Collaborate with engineering teams to deploy models into production environments.
-        - Communicate findings and model performance to non-technical stakeholders.
-        
-        **Requirements:**
-        - MS/PhD in Computer Science, Statistics, or a quantitative field.
-        - 3+ years of experience as a Data Scientist.
-        - Expertise in Python (Pandas, Scikit-learn, TensorFlow/PyTorch).
-        - Experience with cloud platforms (AWS, Azure, or GCP).
-        
-        --- End Simulated JD ---
-        """
-        
-        return jd_text.strip()
-            
     except Exception as e:
-        return f"[Fatal Extraction Error: Simulation failed for URL {url}. Error: {e}]"
-
+        return f"[Fatal Extraction Error: {e}]"
 
 def evaluate_jd_fit(job_description, parsed_json):
     """Evaluates how well a resume fits a given job description, including section-wise scores."""
