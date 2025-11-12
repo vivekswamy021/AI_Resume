@@ -756,28 +756,67 @@ def update_resume_status(resume_name, new_status, applied_jd, submitted_date, re
     else:
         st.error(f"Error: Could not find resume index {resume_list_index} for update.")
         
-# --- NEWLY ISOLATED FUNCTIONS FOR APPROVAL TABS ---
+# --- MAIN UPDATED FUNCTION ---
 
 def candidate_approval_tab_content():
     st.header("👤 Candidate Approval")
     st.markdown("### Resume Status List")
     
+    # 1. Initialize Master List and Resume Statuses if missing
+    if "candidate_master_list" not in st.session_state:
+        st.session_state.candidate_master_list = get_candidate_master_list()
+        
+    if "resume_statuses" not in st.session_state:
+        st.session_state.resume_statuses = {}
+    
     if "resumes_to_analyze" not in st.session_state or not st.session_state.resumes_to_analyze:
         st.info("No resumes have been uploaded and parsed in the 'Resume Analysis' tab yet.")
         return
         
+    # Prepare JD options (assuming st.session_state.admin_jd_list is populated elsewhere)
     jd_options = [item['name'].replace("--- Simulated JD for: ", "") for item in st.session_state.admin_jd_list]
     jd_options.insert(0, "Select JD") 
 
+    
+    # 2. Match and display each resume for approval
     for idx, resume_data in enumerate(st.session_state.resumes_to_analyze):
         resume_name = resume_data['name']
-        current_status = st.session_state.resume_statuses.get(resume_name, "Pending")
         
+        # Match the uploaded resume name to the master list to get personal details
+        candidate_details = next((item for item in st.session_state.candidate_master_list if item['name'] == resume_name), {})
+        
+        # Extract details, defaulting to 'N/A' if the candidate is not found in the master list
+        candidate_email = candidate_details.get('email', 'N/A (Signup Missing)')
+        candidate_phone = candidate_details.get('phone', 'N/A (Signup Missing)')
+        candidate_college = candidate_details.get('college', 'N/A')
+        candidate_university = candidate_details.get('university', 'N/A')
+        
+        # Existing data extraction
+        current_status = st.session_state.resume_statuses.get(resume_name, "Pending")
         current_applied_jd = resume_data.get('applied_jd', 'N/A (Pending Assignment)')
         current_submitted_date = resume_data.get('submitted_date', date.today().strftime("%Y-%m-%d"))
 
         with st.container(border=True):
             st.markdown(f"**Resume:** **{resume_name}**")
+            
+            # --- NEWLY ADDED CANDIDATE PERSONAL DETAILS ---
+            st.markdown("---")
+            st.markdown("### Candidate Contact & Education")
+            col_email, col_phone = st.columns(2)
+            with col_email:
+                st.info(f"**Email:** {candidate_email}")
+            with col_phone:
+                st.info(f"**Phone:** {candidate_phone}")
+                
+            col_college, col_university = st.columns(2)
+            with col_college:
+                st.info(f"**College:** {candidate_college}")
+            with col_university:
+                st.info(f"**University:** {candidate_university}")
+            st.markdown("---")
+            # ---------------------------------------------
+            
+            st.markdown("### Application Details & Status")
             
             col_jd_input, col_date_input = st.columns(2)
             
@@ -831,6 +870,7 @@ def candidate_approval_tab_content():
                     else:
                         jd_to_save = new_applied_jd
                         
+                    # Call the update function
                     update_resume_status(
                         resume_name, 
                         new_status, 
@@ -842,18 +882,29 @@ def candidate_approval_tab_content():
             
     st.markdown("---")
             
+    # 3. Update Summary Table with new columns
     summary_data = []
     for resume_data in st.session_state.resumes_to_analyze:
         name = resume_data['name']
+        
+        # Get Candidate details again for the summary
+        candidate_details = next((item for item in st.session_state.candidate_master_list if item['name'] == name), {})
+        
         summary_data.append({
             "Resume": name, 
+            "Email": candidate_details.get('email', 'N/A'),
+            "Phone": candidate_details.get('phone', 'N/A'),
+            "College": candidate_details.get('college', 'N/A'),
+            "University": candidate_details.get('university', 'N/A'),
             "Applied JD": resume_data.get('applied_jd', 'N/A'),
             "Submitted Date": resume_data.get('submitted_date', 'N/A'),
             "Status": st.session_state.resume_statuses.get(name, "Pending")
         })
-        
+            
     st.subheader("Summary of All Resumes")
-    st.dataframe(summary_data, use_container_width=True)
+    # Using st.dataframe with Pandas for better display of multiple columns
+    df_summary = pd.DataFrame(summary_data)
+    st.dataframe(df_summary, use_container_width=True)
 
 
 def vendor_approval_tab_content():
