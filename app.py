@@ -758,7 +758,8 @@ def update_resume_status(resume_name, new_status, applied_jd, submitted_date, re
         
  # --- NEWLY ISOLATED FUNCTIONS FOR APPROVAL TABS ---
 def candidate_approval_tab_content():
-    st.header("👤 Candidate Approval")
+    
+    st.header("👤 Candidate Approval")
     st.markdown("### Resume Status List")
     
     if "resumes_to_analyze" not in st.session_state or not st.session_state.resumes_to_analyze:
