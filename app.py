@@ -9,6 +9,9 @@ from groq import Groq
 from gtts import gTTS 
 import traceback
 import re 
+import re
+import requests # Need this for HTTP requests (GET)
+from bs4 import BeautifulSoup # Need this for parsing HTML (if scraping)
 from dotenv import load_dotenv 
 from datetime import date 
 import csv 
