@@ -323,9 +323,6 @@ def extract_jd_from_linkedin_url(url: str) -> str:
                 job_title = job_title_raw
     except:
         pass # Keep the default job_title if URL parsing fails
-        
-    except Exception as e:
-        return f"[Fatal Extraction Error: {e}]"
 
 def evaluate_jd_fit(job_description, parsed_json):
     """Evaluates how well a resume fits a given job description, including section-wise scores."""
