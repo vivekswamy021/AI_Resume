@@ -308,7 +308,6 @@ def extract_jd_from_linkedin_url(url: str) -> str:
     A dedicated Job Data API is usually required for reliable, legal access.
     This function outlines the structure but requires real scraping/API logic.
     """
-    
     # 1. Basic URL validation
     if "linkedin.com/jobs/" not in url:
         return f"[Error: Not a valid LinkedIn Job URL format: {url}]"
@@ -327,9 +326,6 @@ def extract_jd_from_linkedin_url(url: str) -> str:
         
     
     # --- REAL EXTRACTION / API INTEGRATION SECTION ---
-    
-    try:
-        return f"""
 [Extraction Failed: Cannot access live LinkedIn data directly]
 
 To make this function work, you must replace this message with:
