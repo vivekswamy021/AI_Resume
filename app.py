@@ -756,157 +756,104 @@ def update_resume_status(resume_name, new_status, applied_jd, submitted_date, re
     else:
         st.error(f"Error: Could not find resume index {resume_list_index} for update.")
         
-# --- MAIN UPDATED FUNCTION ---
-
+ # --- NEWLY ISOLATED FUNCTIONS FOR APPROVAL TABS ---
 def candidate_approval_tab_content():
-    st.header("👤 Candidate Approval")
-    st.markdown("### Resume Status List")
-    
-    # 1. Initialize Master List and Resume Statuses if missing
-    if "candidate_master_list" not in st.session_state:
-        st.session_state.candidate_master_list = get_candidate_master_list()
-        
-    if "resume_statuses" not in st.session_state:
-        st.session_state.resume_statuses = {}
-    
-    if "resumes_to_analyze" not in st.session_state or not st.session_state.resumes_to_analyze:
-        st.info("No resumes have been uploaded and parsed in the 'Resume Analysis' tab yet.")
-        return
-        
-    # Prepare JD options (assuming st.session_state.admin_jd_list is populated elsewhere)
-    jd_options = [item['name'].replace("--- Simulated JD for: ", "") for item in st.session_state.admin_jd_list]
-    jd_options.insert(0, "Select JD") 
+    st.header("👤 Candidate Approval")
+    st.markdown("### Resume Status List")
+    
+    if "resumes_to_analyze" not in st.session_state or not st.session_state.resumes_to_analyze:
+        st.info("No resumes have been uploaded and parsed in the 'Resume Analysis' tab yet.")
+        return
+        
+    jd_options = [item['name'].replace("--- Simulated JD for: ", "") for item in st.session_state.admin_jd_list]
+    jd_options.insert(0, "Select JD") 
 
-    
-    # 2. Match and display each resume for approval
-    for idx, resume_data in enumerate(st.session_state.resumes_to_analyze):
-        resume_name = resume_data['name']
-        
-        # Match the uploaded resume name to the master list to get personal details
-        candidate_details = next((item for item in st.session_state.candidate_master_list if item['name'] == resume_name), {})
-        
-        # Extract details, defaulting to 'N/A' if the candidate is not found in the master list
-        candidate_email = candidate_details.get('email', 'N/A (Signup Missing)')
-        candidate_phone = candidate_details.get('phone', 'N/A (Signup Missing)')
-        candidate_college = candidate_details.get('college', 'N/A')
-        candidate_university = candidate_details.get('university', 'N/A')
-        
-        # Existing data extraction
-        current_status = st.session_state.resume_statuses.get(resume_name, "Pending")
-        current_applied_jd = resume_data.get('applied_jd', 'N/A (Pending Assignment)')
-        current_submitted_date = resume_data.get('submitted_date', date.today().strftime("%Y-%m-%d"))
+    for idx, resume_data in enumerate(st.session_state.resumes_to_analyze):
+        resume_name = resume_data['name']
+        current_status = st.session_state.resume_statuses.get(resume_name, "Pending")
+        
+        current_applied_jd = resume_data.get('applied_jd', 'N/A (Pending Assignment)')
+        current_submitted_date = resume_data.get('submitted_date', date.today().strftime("%Y-%m-%d"))
 
-        with st.container(border=True):
-            st.markdown(f"**Resume:** **{resume_name}**")
-            
-            # --- NEWLY ADDED CANDIDATE PERSONAL DETAILS ---
-            st.markdown("---")
-            st.markdown("### Candidate Contact & Education")
-            col_email, col_phone = st.columns(2)
-            with col_email:
-                st.info(f"**Email:** {candidate_email}")
-            with col_phone:
-                st.info(f"**Phone:** {candidate_phone}")
-                
-            col_college, col_university = st.columns(2)
-            with col_college:
-                st.info(f"**College:** {candidate_college}")
-            with col_university:
-                st.info(f"**University:** {candidate_university}")
-            st.markdown("---")
-            # ---------------------------------------------
-            
-            st.markdown("### Application Details & Status")
-            
-            col_jd_input, col_date_input = st.columns(2)
-            
-            with col_jd_input:
-                try:
-                    default_value = current_applied_jd if current_applied_jd != "N/A (Pending Assignment)" else "Select JD"
-                    jd_default_index = jd_options.index(default_value)
-                except ValueError:
-                    jd_default_index = 0
-                    
-                new_applied_jd = st.selectbox(
-                    "Applied for JD Title", 
-                    options=jd_options,
-                    index=jd_default_index,
-                    key=f"jd_select_{resume_name}_{idx}",
-                )
-                
-            with col_date_input:
-                try:
-                    date_obj = date.fromisoformat(current_submitted_date)
-                except (ValueError, TypeError):
-                    date_obj = date.today()
-                    
-                new_submitted_date = st.date_input(
-                    "Submitted Date", 
-                    value=date_obj,
-                    key=f"date_input_{resume_name}_{idx}"
-                )
-                
-            st.markdown(f"**Current Status:** **{current_status}**")
-            
-            st.markdown("---")
-            
-            col1, col2 = st.columns([3, 1])
-            
-            with col1:
-                st.markdown("Set Status:")
-                new_status = st.selectbox(
-                    "Set Status",
-                    ["Pending", "Approved", "Rejected", "Shortlisted"],
-                    index=["Pending", "Approved", "Rejected", "Shortlisted"].index(current_status),
-                    key=f"status_select_{resume_name}_{idx}",
-                    label_visibility="collapsed"
-                )
+        with st.container(border=True):
+            st.markdown(f"**Resume:** **{resume_name}**")
+            
+            col_jd_input, col_date_input = st.columns(2)
+            
+            with col_jd_input:
+                try:
+                    default_value = current_applied_jd if current_applied_jd != "N/A (Pending Assignment)" else "Select JD"
+                    jd_default_index = jd_options.index(default_value)
+                except ValueError:
+                    jd_default_index = 0
+                    
+                new_applied_jd = st.selectbox(
+                    "Applied for JD Title", 
+                    options=jd_options,
+                    index=jd_default_index,
+                    key=f"jd_select_{resume_name}_{idx}",
+                )
+                
+            with col_date_input:
+                try:
+                    date_obj = date.fromisoformat(current_submitted_date)
+                except (ValueError, TypeError):
+                    date_obj = date.today()
+                    
+                new_submitted_date = st.date_input(
+                    "Submitted Date", 
+                    value=date_obj,
+                    key=f"date_input_{resume_name}_{idx}"
+                )
+                
+            st.markdown(f"**Current Status:** **{current_status}**")
+            
+            st.markdown("---")
+            
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                st.markdown("Set Status:")
+                new_status = st.selectbox(
+                    "Set Status",
+                    ["Pending", "Approved", "Rejected", "Shortlisted"],
+                    index=["Pending", "Approved", "Rejected", "Shortlisted"].index(current_status),
+                    key=f"status_select_{resume_name}_{idx}",
+                    label_visibility="collapsed"
+                )
 
-            with col2:
-                if st.button("Update", key=f"update_btn_{resume_name}_{idx}"):
-                    
-                    if new_applied_jd == "Select JD" and len(jd_options) > 1:
-                        jd_to_save = "N/A (Pending Assignment)"
-                    else:
-                        jd_to_save = new_applied_jd
-                        
-                    # Call the update function
-                    update_resume_status(
-                        resume_name, 
-                        new_status, 
-                        jd_to_save, 
-                        new_submitted_date.strftime("%Y-%m-%d"),
-                        idx
-                    )
-                    st.rerun() 
-            
-    st.markdown("---")
-            
-    # 3. Update Summary Table with new columns
-    summary_data = []
-    for resume_data in st.session_state.resumes_to_analyze:
-        name = resume_data['name']
-        
-        # Get Candidate details again for the summary
-        candidate_details = next((item for item in st.session_state.candidate_master_list if item['name'] == name), {})
-        
-        summary_data.append({
-            "Resume": name, 
-            "Email": candidate_details.get('email', 'N/A'),
-            "Phone": candidate_details.get('phone', 'N/A'),
-            "College": candidate_details.get('college', 'N/A'),
-            "University": candidate_details.get('university', 'N/A'),
-            "Applied JD": resume_data.get('applied_jd', 'N/A'),
-            "Submitted Date": resume_data.get('submitted_date', 'N/A'),
-            "Status": st.session_state.resume_statuses.get(name, "Pending")
-        })
-            
-    st.subheader("Summary of All Resumes")
-    # Using st.dataframe with Pandas for better display of multiple columns
-    df_summary = pd.DataFrame(summary_data)
-    st.dataframe(df_summary, use_container_width=True)
-
-
+            with col2:
+                if st.button("Update", key=f"update_btn_{resume_name}_{idx}"):
+                    
+                    if new_applied_jd == "Select JD" and len(jd_options) > 1:
+                        jd_to_save = "N/A (Pending Assignment)"
+                    else:
+                        jd_to_save = new_applied_jd
+                        
+                    update_resume_status(
+                        resume_name, 
+                        new_status, 
+                        jd_to_save, 
+                        new_submitted_date.strftime("%Y-%m-%d"),
+                        idx
+                    )
+                    st.rerun() 
+            
+    st.markdown("---")
+            
+    summary_data = []
+    for resume_data in st.session_state.resumes_to_analyze:
+        name = resume_data['name']
+        summary_data.append({
+            "Resume": name, 
+            "Applied JD": resume_data.get('applied_jd', 'N/A'),
+            "Submitted Date": resume_data.get('submitted_date', 'N/A'),
+            "Status": st.session_state.resume_statuses.get(name, "Pending")
+        })
+        
+    st.subheader("Summary of All Resumes")
+    st.dataframe(summary_data, use_container_width=True)
+# ----vendor-------    
 def vendor_approval_tab_content():
     st.header("🤝 Vendor Approval") 
     
