@@ -295,52 +295,52 @@ def parse_with_llm(text, return_type='json'):
     return {"error": "Invalid return_type"}
 
 
-import re
-import requests # Need this for HTTP requests (GET)
-from bs4 import BeautifulSoup # Need this for parsing HTML (if scraping)
-
 def extract_jd_from_linkedin_url(url: str) -> str:
     """
-    Attempts to extract JD content from a LinkedIn URL.
-    
-    NOTE: Real-world extraction (web scraping) from LinkedIn is difficult
-    due to dynamic content, rate limits, and robots.txt restrictions.
-    A dedicated Job Data API is usually required for reliable, legal access.
-    This function outlines the structure but requires real scraping/API logic.
+    Simulates JD content extraction from a LinkedIn URL.
     """
-    # 1. Basic URL validation
-    if "linkedin.com/jobs/" not in url:
-        return f"[Error: Not a valid LinkedIn Job URL format: {url}]"
-
-    job_title = "Job Description" 
-    
     try:
-        # Attempt to get a cleaner job title from the URL (your existing logic)
-        match = re.search(r'/jobs/view/([^/]+)', url) or re.search(r'/jobs/(\w+)', url)
-        if match:
-            job_title_raw = match.group(1).split('?')[0].replace('-', ' ').title()
-            if not job_title_raw.lower().startswith('view'):
-                job_title = job_title_raw
-    except:
-        pass # Keep the default job_title if URL parsing fails
-        
-    
-    # --- REAL EXTRACTION / API INTEGRATION SECTION ---
-[Extraction Failed: Cannot access live LinkedIn data directly]
+        job_title = "Data Scientist"
+        try:
+            # More robust title extraction from a common LinkedIn job URL format
+            match = re.search(r'/jobs/view/([^/]+)', url) or re.search(r'/jobs/(\w+)', url)
+            if match:
+                job_title = match.group(1).split('?')[0].replace('-', ' ').title()
+                if job_title.lower().startswith('view'): job_title = 'Data Scientist' # Fallback
+        except:
+            pass
 
-To make this function work, you must replace this message with:
-1. **API Integration:** Use a third-party job data API (Recommended).
-2. **Advanced Scraping:** Implement a full browser automation tool (like Selenium or Playwright) to navigate the dynamic content, which is resource-intensive and often blocked.
+        if "linkedin.com/jobs/" not in url:
+             return f"[Error: Not a valid LinkedIn Job URL format: {url}]"
 
-URL Requested: {url}
-Detected Title: {job_title}
-"""
         
-    except requests.exceptions.RequestException as e:
-        return f"[HTTP Request Error: Failed to fetch URL {url}. Status code likely 403 Forbidden. Error: {e}]"
+        # Simulated synthesized JD content 
+        jd_text = f"""
+        --- Simulated JD for: {job_title} ---
         
+        **Company:** Quantum Analytics Inc.
+        **Role:** {job_title}
+        
+        **Responsibilities:**
+        - Develop and implement machine learning models to solve complex business problems.
+        - Clean, transform, and analyze large datasets using Python/R and SQL.
+        - Collaborate with engineering teams to deploy models into production environments.
+        - Communicate findings and model performance to non-technical stakeholders.
+        
+        **Requirements:**
+        - MS/PhD in Computer Science, Statistics, or a quantitative field.
+        - 3+ years of experience as a Data Scientist.
+        - Expertise in Python (Pandas, Scikit-learn, TensorFlow/PyTorch).
+        - Experience with cloud platforms (AWS, Azure, or GCP).
+        
+        --- End Simulated JD ---
+        """
+        
+        return jd_text.strip()
+            
     except Exception as e:
-        return f"[Fatal Extraction Error: {e}]"
+        return f"[Fatal Extraction Error: Simulation failed for URL {url}. Error: {e}]"
+
 
 def evaluate_jd_fit(job_description, parsed_json):
     """Evaluates how well a resume fits a given job description, including section-wise scores."""
@@ -402,6 +402,7 @@ def evaluate_interview_answers(qa_list, parsed_json):
     if not GROQ_API_KEY:
         return "AI Evaluation Disabled: GROQ_API_KEY not set."
     if "error" in parsed_json: return "Cannot evaluate due to resume parsing errors."
+
     
     resume_summary = json.dumps(parsed_json, indent=2)
     
